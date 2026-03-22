@@ -15,3 +15,5 @@ stripe
 python-dotenv
 pyjwt[crypto]
 certifi
+requests
+svix

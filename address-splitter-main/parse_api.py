@@ -45,7 +45,8 @@ from usage_limits import (
     get_members_usage,
 )
 from clerk_auth import verify_clerk_token, verify_clerk_token_with_reason
-from clerk_org import is_org_admin, get_org_members_with_roles
+from clerk_org import is_org_admin, get_org_members_with_roles, ensure_personal_workspace
+from clerk_webhooks import verify_clerk_webhook_payload
 
 # Stripe (optional; set STRIPE_SECRET_KEY to enable billing)
 try:
@@ -131,6 +132,30 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.post("/webhooks/clerk")
+async def clerk_webhook(request: Request):
+    """
+    Clerk → Webhooks → Add endpoint URL: https://<your-api-host>/webhooks/clerk
+    Subscribe to user.created. Set CLERK_WEBHOOK_SIGNING_SECRET from the webhook's signing secret.
+    """
+    body = await request.body()
+    try:
+        hdrs = {k: v for k, v in request.headers.items()}
+        event = verify_clerk_webhook_payload(body, hdrs)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    etype = event.get("type")
+    data = event.get("data") or {}
+    if etype == "user.created":
+        uid = data.get("id")
+        if uid:
+            try:
+                ensure_personal_workspace(uid, data)
+            except Exception as ex:
+                print(f"[webhook] user.created ensure_personal_workspace failed for {uid}: {ex}")
+    return {"received": True}
 
 
 class ParseRequest(BaseModel):
@@ -509,6 +534,30 @@ def update_overage_limit(body: OverageLimitUpdate, request: Request):
     if not org_id:
         raise HTTPException(status_code=400, detail="Select a team (X-Org-Id) to set overage limit.")
     raise HTTPException(status_code=400, detail="Free-plan overage is no longer available. Upgrade to a paid plan.")
+
+
+class EnsureWorkspaceOut(BaseModel):
+    org_id: str
+    name: str
+    created: bool
+
+
+@app.post("/team/ensure-workspace", response_model=EnsureWorkspaceOut)
+def post_team_ensure_workspace(request: Request):
+    """
+    Ensure the signed-in user has a Clerk organization (default workspace name).
+    Migrates personal free-tier usage into the org so credits don't reset.
+    Safe to call on every app load (idempotent).
+    """
+    auth_header = request.headers.get("authorization") or ""
+    user_id = verify_clerk_token(auth_header) if auth_header else None
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Sign in required.")
+    try:
+        out = ensure_personal_workspace(user_id, None)
+        return EnsureWorkspaceOut(**out)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
 
 # ---------- Team management (settings, members, usage, permissions) ----------

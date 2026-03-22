@@ -92,6 +92,54 @@ def _usage_key(org_id: str | None, user_id: str) -> str:
     return f"user:{user_id}"
 
 
+def migrate_personal_usage_to_org(user_id: str, org_id: str) -> None:
+    """
+    When a user gets their first workspace org, move this month's free-tier counters
+    from user:* to org:* so credits don't reset (same bucket, new key).
+    """
+    _init_db()
+    period = _period_now()
+    user_key = f"user:{user_id}"
+    org_key = f"org:{org_id}"
+    with _db_lock:
+        conn = _get_conn()
+        try:
+            urow = conn.execute(
+                "SELECT tokens_used, overage_used FROM usage WHERE key = ? AND period = ?",
+                (user_key, period),
+            ).fetchone()
+            if not urow:
+                conn.commit()
+                return
+            u_tok = int(urow["tokens_used"])
+            u_ovg = int(urow["overage_used"])
+            orow = conn.execute(
+                "SELECT tokens_used, overage_used FROM usage WHERE key = ? AND period = ?",
+                (org_key, period),
+            ).fetchone()
+            if orow:
+                o_tok = int(orow["tokens_used"])
+                o_ovg = int(orow["overage_used"])
+                final_tok = u_tok + o_tok
+                final_ovg = u_ovg + o_ovg
+            else:
+                final_tok, final_ovg = u_tok, u_ovg
+            conn.execute(
+                """
+                INSERT INTO usage (key, period, tokens_used, overage_used)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(key, period) DO UPDATE SET
+                    tokens_used = excluded.tokens_used,
+                    overage_used = excluded.overage_used
+                """,
+                (org_key, period, final_tok, final_ovg),
+            )
+            conn.execute("DELETE FROM usage WHERE key = ? AND period = ?", (user_key, period))
+            conn.commit()
+        finally:
+            conn.close()
+
+
 def get_usage(org_id: str | None, user_id: str) -> tuple[int, int, int | None]:
     """
     Returns (tokens_used, overage_used, overage_limit) for current period.

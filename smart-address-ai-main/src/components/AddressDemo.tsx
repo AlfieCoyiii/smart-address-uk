@@ -15,7 +15,7 @@ const ALL_COLUMNS: ColumnKey[] = ["flatNumber", "buildingName", "streetNumber", 
 
 const AddressDemo = () => {
   const { getToken, isSignedIn } = useAuth();
-  const { organization } = useEffectiveOrganization();
+  const { organization, provisionError } = useEffectiveOrganization();
   const [input, setInput] = useState("");
   const [results, setResults] = useState<ParsedAddress[]>([]);
   const [unsplit, setUnsplit] = useState<UnsplitEntry[]>([]);
@@ -42,6 +42,14 @@ const AddressDemo = () => {
 
   const handleSplit = async () => {
     if (lines.length === 0) return;
+    if (isSignedIn && !organization?.id) {
+      toast.error(
+        provisionError
+          ? "Workspace setup failed. Refresh the page or sign out and back in."
+          : "Your workspace is still loading — try again in a moment.",
+      );
+      return;
+    }
     setIsProcessing(true);
     setUnsplit([]);
     try {

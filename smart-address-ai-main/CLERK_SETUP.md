@@ -97,6 +97,23 @@ cd address-splitter-main && ./venv/bin/uvicorn parse_api:app --reload --port 800
 
 ---
 
+## Step 7: Organizations + automatic workspace (production)
+
+Each signed-in user gets **one Clerk Organization** (“workspace”) so credits and Stripe billing use a single org id (no reset when “creating a team”).
+
+1. In Clerk Dashboard, enable **Organizations** (Configure → **Organizations** — turn on if prompted).
+2. Set **`CLERK_SECRET_KEY`** in **`address-splitter-main/.env`** (same **Secret key** as on the API Keys page — required for creating orgs server-side).
+3. **Webhook (recommended):**  
+   - **Webhooks** → **Add endpoint**  
+   - URL: `https://YOUR_PARSER_API_HOST/webhooks/clerk` (your Render API URL, no trailing slash issues)  
+   - Subscribe to **`user.created`**  
+   - Copy the endpoint **Signing secret** into **`CLERK_WEBHOOK_SIGNING_SECRET`** in `.env`  
+4. Install API deps: `pip install svix requests` (or `pip install -r requirements.txt`).
+
+If the webhook is missing, the app still calls **`POST /team/ensure-workspace`** after sign-in to create the workspace (slightly later than the webhook). Users who already had **personal** usage before this feature get that usage **migrated** into their new org for the current month.
+
+---
+
 ## What’s already done in the app
 
 - **ClerkProvider** wraps the app and uses `VITE_CLERK_PUBLISHABLE_KEY`.

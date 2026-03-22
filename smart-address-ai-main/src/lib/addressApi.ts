@@ -96,6 +96,28 @@ export async function fetchParseContext(options: { token: string; orgId?: string
   return res.json();
 }
 
+/**
+ * Ensure the signed-in user has a Clerk workspace org (creates one with a default name if needed).
+ * Migrates personal free-tier usage into the org. Idempotent.
+ */
+export async function ensureWorkspace(options: { token: string }): Promise<{
+  org_id: string;
+  name: string;
+  created: boolean;
+}> {
+  const base = getApiBase();
+  const url = base ? `${base}/team/ensure-workspace` : "/api/team/ensure-workspace";
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${options.token}` },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(typeof err.detail === "string" ? err.detail : "Could not set up workspace.");
+  }
+  return res.json();
+}
+
 /** Fetch current usage (tokens used, limit, overage, plan). Requires token; pass orgId for team, omit for personal. */
 export async function fetchUsage(options: { token: string; orgId?: string | null }): Promise<{
   tokens_used: number;

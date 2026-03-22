@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Users, CreditCard, Settings } from "lucide-react";
-import { useAuth } from "@clerk/clerk-react";
+import { useAuth, useOrganization, useOrganizationList } from "@clerk/clerk-react";
 import { useEffectiveOrganization } from "@/hooks/useEffectiveOrganization";
 import {
   fetchTeamSettings,
@@ -35,7 +35,9 @@ const Team = () => {
   const { getToken, isSignedIn } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { organization } = useEffectiveOrganization();
+  const { organization, isProvisioning, isLoaded: orgHookLoaded, provisionError } = useEffectiveOrganization();
+  const { organization: activeClerkOrg } = useOrganization();
+  const { userMemberships } = useOrganizationList({ userMemberships: true });
   const [settings, setSettings] = useState<Awaited<ReturnType<typeof fetchTeamSettings>> | null>(null);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -45,6 +47,8 @@ const Team = () => {
   const [paidCapInput, setPaidCapInput] = useState("");
   const [savingPaidOverage, setSavingPaidOverage] = useState(false);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [renaming, setRenaming] = useState(false);
 
   useEffect(() => {
     if (!isSignedIn) {
@@ -101,6 +105,10 @@ const Team = () => {
     }
   }, [searchParams, isAdmin, organization?.id, loading]);
 
+  useEffect(() => {
+    if (organization?.name) setRenameDraft(organization.name);
+  }, [organization?.name]);
+
   const dismissCheckoutParam = useCallback(() => {
     searchParams.delete("after_checkout");
     setSearchParams(searchParams, { replace: true });
@@ -144,20 +152,53 @@ const Team = () => {
     navigate("/sign-in");
     return null;
   }
+  if (isSignedIn && orgHookLoaded && !organization && !provisionError) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="pt-32 pb-24 container mx-auto px-4 text-center flex flex-col items-center gap-4">
+          <Loader2 className="w-10 h-10 animate-spin text-muted-foreground" />
+          <p className="text-muted-foreground">{isProvisioning ? "Setting up your workspace…" : "Almost ready…"}</p>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
+
   if (!organization) {
     return (
       <div className="min-h-screen bg-background">
         <Navbar />
-        <div className="pt-32 pb-24 container mx-auto px-4 text-center">
-          <p className="text-muted-foreground">You don&apos;t have a team yet.</p>
-          <Button asChild className="mt-4">
-            <Link to="/pricing">Create a team</Link>
+        <div className="pt-32 pb-24 container mx-auto px-4 text-center max-w-md mx-auto">
+          <p className="text-muted-foreground">We couldn&apos;t load your workspace.</p>
+          <Button className="mt-4" onClick={() => window.location.reload()}>
+            Refresh page
           </Button>
         </div>
         <Footer />
       </div>
     );
   }
+
+  const handleRenameWorkspace = async () => {
+    const n = renameDraft.trim();
+    if (!n || !organization || n === organization.name) return;
+    const clerkOrg = activeClerkOrg;
+    if (!clerkOrg) {
+      toast.error("Session not ready. Refresh the page and try again.");
+      return;
+    }
+    setRenaming(true);
+    try {
+      await clerkOrg.update({ name: n });
+      await userMemberships?.revalidate?.();
+      toast.success("Workspace renamed.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not rename workspace.");
+    } finally {
+      setRenaming(false);
+    }
+  };
 
   const handleManageBilling = async () => {
     if (!organization?.id) return;
@@ -200,6 +241,31 @@ const Team = () => {
             });
             return (
             <>
+              {isAdmin && (
+                <section className="mt-10 rounded-xl border border-border bg-card p-6 max-w-lg">
+                  <h2 className="text-lg font-semibold text-foreground">Workspace name</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Shown in billing and invites. We set a default when you sign up; you can change it anytime.
+                  </p>
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <Input
+                      value={renameDraft}
+                      onChange={(e) => setRenameDraft(e.target.value)}
+                      className="max-w-xs"
+                      placeholder="Workspace name"
+                    />
+                    <Button
+                      size="sm"
+                      disabled={renaming || !renameDraft.trim() || renameDraft.trim() === organization.name}
+                      onClick={() => void handleRenameWorkspace()}
+                    >
+                      {renaming ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                      Save name
+                    </Button>
+                  </div>
+                </section>
+              )}
+
               {/* Usage summary — everyone sees this */}
               <section className="mt-10 rounded-xl border border-border bg-card p-8">
                 <h2 className="text-lg font-semibold flex items-center gap-2">

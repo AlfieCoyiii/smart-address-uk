@@ -55,10 +55,14 @@ const Navbar = () => {
     const load = async () => {
       const token = await getToken();
       if (!token) return;
+      if (!organization?.id) {
+        setUsage(null);
+        return;
+      }
       try {
         const u = await fetchUsage({
           token,
-          orgId: organization?.id ?? undefined,
+          orgId: organization.id,
         });
         setUsage({
           plan: u.plan,

@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useAuth } from "@clerk/clerk-react";
@@ -15,7 +14,7 @@ import {
   looksLikeStripePriceId,
   STRIPE_PRICE_IDS,
 } from "@/lib/stripeApi";
-import { fetchUsage, fetchTeamSettings } from "@/lib/addressApi";
+import { fetchTeamSettings } from "@/lib/addressApi";
 import { toast } from "sonner";
 
 const PLANS = [
@@ -55,12 +54,9 @@ const PAID_PLANS = ["starter", "pro", "corporate", "enterprise"] as const;
 
 const Pricing = () => {
   const { getToken, isSignedIn } = useAuth();
-  const { organization, createOrganization } = useEffectiveOrganization();
+  const { organization, isLoaded: orgStateLoaded, provisionError } = useEffectiveOrganization();
   const [loadingPlanId, setLoadingPlanId] = useState<string | null>(null);
   const [loadingPortal, setLoadingPortal] = useState(false);
-  const [createTeamName, setCreateTeamName] = useState("");
-  const [creatingTeam, setCreatingTeam] = useState(false);
-  const [usage, setUsage] = useState<{ tokens_used: number; tokens_limit: number; overage_used: number; overage_limit: number | null; plan: string } | null>(null);
   const [teamCtx, setTeamCtx] = useState<{
     is_admin: boolean;
     plan: string;
@@ -77,7 +73,6 @@ const Pricing = () => {
 
   useEffect(() => {
     if (!isSignedIn) {
-      setUsage(null);
       setTeamCtx(null);
       setTeamLoading(false);
       return;
@@ -98,36 +93,14 @@ const Pricing = () => {
         } finally {
           setTeamLoading(false);
         }
-        setUsage(null);
       } else {
         setTeamCtx(null);
         setTeamLoading(false);
-        try {
-          const u = await fetchUsage({ token, orgId: undefined });
-          setUsage(u);
-        } catch {
-          setUsage(null);
-        }
       }
     };
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organization?.id, isSignedIn]);
-
-  const handleCreateTeam = async () => {
-    const name = createTeamName.trim();
-    if (!name || !createOrganization) return;
-    setCreatingTeam(true);
-    try {
-      await createOrganization({ name });
-      setCreateTeamName("");
-      toast.success("Team created. You can now subscribe to a plan.");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not create team.");
-    } finally {
-      setCreatingTeam(false);
-    }
-  };
 
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
   const successUrl = `${baseUrl}/team?after_checkout=1`;
@@ -143,7 +116,7 @@ const Pricing = () => {
       return;
     }
     if (!organization?.id) {
-      toast.error("Create a team first to subscribe.");
+      toast.error("Your workspace is still loading. Wait a moment and try again.");
       return;
     }
     setLoadingPlanId(planId);
@@ -163,7 +136,7 @@ const Pricing = () => {
 
   const handleManageBilling = async () => {
     if (!organization?.id) {
-      toast.error("Create a team first.");
+      toast.error("Your workspace is still loading. Wait a moment and try again.");
       return;
     }
     setLoadingPortal(true);
@@ -178,7 +151,7 @@ const Pricing = () => {
 
   const handleNonAdminSubscribe = () => {
     toast.error(
-      "Only your team’s organisation admin can subscribe or change plans. To pay for your own subscription, create a new team (organisation) in your account, then subscribe from there.",
+      "Only your workspace admin can subscribe or change plans. Ask an admin to upgrade, or contact support if you need your own subscription.",
       { duration: 8000 },
     );
   };
@@ -193,11 +166,19 @@ const Pricing = () => {
       };
     }
     if (!organization?.id) {
+      if (provisionError) {
+        return {
+          label: "Refresh page",
+          disabled: false,
+          variant: "outline" as const,
+          onClick: () => window.location.reload(),
+        };
+      }
       return {
-        label: "Subscribe",
-        disabled: false,
+        label: "Loading workspace…",
+        disabled: true,
         variant: "outline" as const,
-        onClick: () => toast.error("Create a team first to subscribe."),
+        onClick: () => toast.info("Your workspace is still loading."),
       };
     }
     if (teamLoading) {
@@ -222,7 +203,7 @@ const Pricing = () => {
     }
     if (!is_admin) {
       return {
-        label: "Create your own team to pay",
+        label: "Admin only — billing",
         disabled: false,
         variant: "secondary" as const,
         onClick: handleNonAdminSubscribe,
@@ -257,7 +238,10 @@ const Pricing = () => {
             </p>
             {organization && (
               <p className="mt-2 text-sm text-muted-foreground">
-                Your team: <span className="text-foreground font-medium">{organization.name}</span>
+                Workspace: <span className="text-foreground font-medium">{organization.name}</span> — rename anytime on{" "}
+                <Link to="/team" className="text-primary hover:underline">
+                  Team
+                </Link>
               </p>
             )}
           </motion.div>
@@ -275,33 +259,20 @@ const Pricing = () => {
               </p>
             </div>
           )}
-          {isSignedIn && !organization && (
-            <div className="max-w-xl mx-auto mb-6 rounded-lg border border-primary/40 bg-primary/10 p-4 text-sm">
-              <p className="font-medium text-foreground">Create a team to get a plan</p>
-              <p className="mt-1 text-muted-foreground">
-                Right now you&apos;re on your personal allowance (50 included credits/month, no overage on free). Create a
-                team to subscribe to a plan and share credits with your team.
-              </p>
-              {createOrganization && (
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <Input
-                    type="text"
-                    placeholder="Team name"
-                    className="max-w-[200px]"
-                    value={createTeamName}
-                    onChange={(e) => setCreateTeamName(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleCreateTeam())}
-                  />
-                  <Button
-                    size="sm"
-                    disabled={!createTeamName.trim() || creatingTeam}
-                    onClick={handleCreateTeam}
-                  >
-                    {creatingTeam ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                    Create team
-                  </Button>
-                </div>
-              )}
+          {isSignedIn && !organization && !provisionError && (
+            <div className="max-w-xl mx-auto mb-6 rounded-lg border border-border bg-muted/30 p-4 text-sm flex items-center gap-3 justify-center">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground shrink-0" />
+              <p className="text-muted-foreground">Setting up your workspace…</p>
+            </div>
+          )}
+
+          {isSignedIn && orgStateLoaded && !organization && provisionError && (
+            <div className="max-w-xl mx-auto mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-center">
+              <p className="font-medium text-foreground">Couldn&apos;t finish workspace setup</p>
+              <p className="mt-1 text-muted-foreground">Refresh the page or sign out and back in. If it keeps happening, contact support.</p>
+              <Button size="sm" variant="outline" className="mt-3" onClick={() => window.location.reload()}>
+                Refresh page
+              </Button>
             </div>
           )}
 
@@ -418,14 +389,9 @@ const Pricing = () => {
               </p>
             )}
 
-          {isSignedIn && !organization && usage !== null && (
-            <p className="mt-6 text-center text-sm text-muted-foreground">
-              Create a team to subscribe to a plan. Your personal allowance is for you only; a team has its own plan and allowance.
-            </p>
-          )}
           {!isSignedIn && (
             <p className="mt-8 text-center text-sm text-muted-foreground">
-              Sign in to see your allowance and subscribe. Select or create a team to manage a team plan.
+              Sign in to see your allowance and subscribe. Each account gets a workspace for billing and shared credits.
             </p>
           )}
         </div>
