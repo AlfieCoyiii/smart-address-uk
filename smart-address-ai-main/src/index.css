@@ -1,0 +1,170 @@
+/* @import must be first — otherwise Vite/build may drop or mis-order rules */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 47% 6%;
+    --foreground: 210 40% 96%;
+
+    --card: 222 40% 9%;
+    --card-foreground: 210 40% 96%;
+
+    --popover: 222 40% 9%;
+    --popover-foreground: 210 40% 96%;
+
+    --primary: 213 94% 58%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 222 30% 14%;
+    --secondary-foreground: 210 40% 90%;
+
+    --muted: 222 20% 16%;
+    --muted-foreground: 215 20% 55%;
+
+    --accent: 190 80% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 222 20% 18%;
+    --input: 222 20% 18%;
+    --ring: 213 94% 58%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 222 47% 6%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-primary: 213 94% 58%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 222 30% 14%;
+    --sidebar-accent-foreground: 210 40% 96%;
+    --sidebar-border: 222 20% 18%;
+    --sidebar-ring: 213 94% 58%;
+
+    /* Custom tokens */
+    --glow-primary: 213 94% 58%;
+    --glow-accent: 190 80% 50%;
+    --surface-elevated: 222 35% 11%;
+    --text-dim: 215 15% 45%;
+  }
+
+  .dark {
+    /* Same as root - dark by default */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Inter', system-ui, sans-serif;
+    letter-spacing: -0.02em;
+  }
+
+  code, pre {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+@layer utilities {
+  .glow-primary {
+    box-shadow: 0 0 20px hsl(213 94% 58% / 0.3), 0 0 60px hsl(213 94% 58% / 0.1);
+  }
+
+  .glow-accent {
+    box-shadow: 0 0 20px hsl(190 80% 50% / 0.3), 0 0 60px hsl(190 80% 50% / 0.1);
+  }
+
+  .text-gradient-primary {
+    background: linear-gradient(135deg, hsl(213 94% 58%), hsl(190 80% 50%));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .bg-gradient-hero {
+    background: radial-gradient(ellipse 80% 50% at 50% -20%, hsl(213 94% 58% / 0.15), transparent);
+  }
+
+  .bg-surface-elevated {
+    background: hsl(var(--surface-elevated));
+  }
+
+  .border-glow {
+    border-color: hsl(213 94% 58% / 0.3);
+  }
+
+  .glass {
+    background: hsl(222 40% 9% / 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .grid-pattern {
+    background-image: 
+      linear-gradient(hsl(222 20% 18% / 0.5) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(222 20% 18% / 0.5) 1px, transparent 1px);
+    background-size: 60px 60px;
+  }
+}
+
+/* Force Clerk components (UserButton, dropdowns, modals) to use white text */
+[data-clerk-component],
+.cl-rootBox,
+[class*="cl-"] {
+  --clerk-color-foreground: #ffffff !important;
+  --clerk-color-muted-foreground: #ffffff !important;
+  --clerk-color-text: #ffffff !important;
+  --clerk-color-text-secondary: #ffffff !important;
+}
+/* Target text in Clerk (UserButton dropdown, modals) so labels and options are white */
+.cl-rootBox span,
+.cl-rootBox p,
+.cl-rootBox label,
+.cl-rootBox a,
+.cl-rootBox button,
+.cl-rootBox div,
+[class*="cl-"] span,
+[class*="cl-"] p,
+[class*="cl-"] label,
+[class*="cl-"] a,
+[class*="cl-"] button,
+[class*="cl-"] div {
+  color: #ffffff !important;
+}
+/* Catch-all: any text inside Clerk components stays white for contrast */
+.cl-rootBox *,
+[data-clerk-component] * {
+  color: #ffffff !important;
+}
+
+/* Keep default org logo but hide logo upload – no custom org images */
+.cl-rootBox input[type="file"],
+[data-clerk-component] input[type="file"] {
+  display: none !important;
+  visibility: hidden !important;
+  position: absolute !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+/* Hide only the upload control (label/div that wraps the file input), not the whole form */
+.cl-rootBox div:has(> input[type="file"]),
+.cl-rootBox label:has(input[type="file"]),
+[data-clerk-component] div:has(> input[type="file"]),
+[data-clerk-component] label:has(input[type="file"]) {
+  display: none !important;
+}

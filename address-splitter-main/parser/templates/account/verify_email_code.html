@@ -1,0 +1,30 @@
+{% extends 'parser/base.html' %}
+{% block content %}
+<div class="container d-flex justify-content-center align-items-center" style="min-height:75vh;">
+  <div class="card shadow-sm p-4" style="min-width:350px;max-width:420px;border-radius:14px;">
+    <h4 class="mb-3" style="color:#26547C;font-weight:600;">Verify your email</h4>
+    <div style="font-size:1.04em;color:#657494;margin-bottom:16px">
+      We emailed you a 6-digit verification code.<br>
+      Please enter it below to complete your registration.<br>
+      <span style="color:#a0780b;font-size:.97em;">If you do not see it, please check your spam or junk folder.</span>
+    </div>
+    {% if error %}
+      <div class="alert alert-danger py-1" role="alert">
+        <b>There was a problem:</b><br>{{ error }}
+        <div class="mt-2" style="font-size:0.98em;color:#814705;">
+          If you continue to see this, contact <a href="mailto:support@ukaddresssplitter.com">support@ukaddresssplitter.com</a> and mention the code above for fast troubleshooting.
+        </div>
+      </div>
+    {% endif %}
+    <form method="post">{% csrf_token %}
+      <div class="mb-3">
+        <input type="text" name="code" maxlength="6" pattern="[0-9]{6}" autofocus class="form-control" placeholder="6-digit code" style="font-size:1.15em;letter-spacing:5px;text-align:center;" required>
+      </div>
+      <button type="submit" class="btn btn-primary-modern w-100 mb-2" style="background-color:#6BE177;border:none;font-weight:600;">Verify</button>
+    </form>
+    <form method="post" action="{% url 'resend_verification_code' %}">{% csrf_token %}
+      <button type="submit" class="btn btn-link" style="font-size:0.99em;color:#2f8d3a;">Resend code</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

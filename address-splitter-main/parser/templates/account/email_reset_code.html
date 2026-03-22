@@ -1,0 +1,27 @@
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Reset your password</title>
+  <style>
+    body { background:#f9f9fd; color:#223b55; font-family:sans-serif; margin:0; }
+    .container { background:#fff; max-width:420px; margin:32px auto; border-radius:14px; box-shadow:0 2px 18px 0 rgba(21,59,85,0.08); padding:30px 30px 26px 30px; }
+    .logo { letter-spacing:1px; font-weight:bold; font-size:1.15em; color:#6BE177;}
+    .reset-code { font-size:2.14em; letter-spacing:10px; font-family:monospace; background:#e9f8ed; color:#11b35a; padding:10px 8px; border-radius:7px; margin:21px 0 12px 0; display:inline-block; }
+    .footer { font-size:0.92em; color:#7a8da6; margin-top:36px; }
+    @media (max-width:600px){.container{padding:15px;}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">UK Address Splitter</div>
+    <h2 style="margin:14px 0 10px 0; color:#183054; font-size:1.2em;font-weight:600;">Reset your password</h2>
+    <p style="font-size:1.05em;color:#425884;line-height:1.38;">Hi {{ first_name|default:"" }},<br>Use the code below to securely reset your password:</p>
+    <div class="reset-code">{{ code }}</div>
+    <div style="font-size:1.07em; color:#489c5e;margin:10px 0 22px 0;font-weight:500;">This code will expire in 10 minutes.</div>
+    <p style="margin-top:20px;font-size:1em;color:#7a8da6;">If you did not request a password reset, you can ignore this email.</p>
+    <div class="footer">
+      &copy; {{ now|date:"Y" }} UK Address Splitter. All rights reserved.
+    </div>
+  </div>
+</body>
+</html>

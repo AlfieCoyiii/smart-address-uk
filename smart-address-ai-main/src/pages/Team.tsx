@@ -1,0 +1,448 @@
+import { useState, useEffect, useCallback } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Loader2, Users, CreditCard, Settings } from "lucide-react";
+import { useAuth } from "@clerk/clerk-react";
+import { useEffectiveOrganization } from "@/hooks/useEffectiveOrganization";
+import {
+  fetchTeamSettings,
+  updateTeamSettings,
+  fetchTeamMembers,
+  type TeamMember,
+} from "@/lib/addressApi";
+import { createPortalSession } from "@/lib/stripeApi";
+import { computeCreditsRemaining, creditsRemainingTitle } from "@/lib/usageCredits";
+import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+function overagePencePerAddress(plan: string): number {
+  if (plan === "starter") return 6;
+  if (plan === "pro") return 4;
+  return 2;
+}
+
+const Team = () => {
+  const { getToken, isSignedIn } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { organization } = useEffectiveOrganization();
+  const [settings, setSettings] = useState<Awaited<ReturnType<typeof fetchTeamSettings>> | null>(null);
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [paidUnlimited, setPaidUnlimited] = useState(true);
+  const [paidCapInput, setPaidCapInput] = useState("");
+  const [savingPaidOverage, setSavingPaidOverage] = useState(false);
+  const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isSignedIn) {
+      setSettings(null);
+      setMembers([]);
+      setLoading(false);
+      return;
+    }
+    if (!organization?.id) {
+      setLoading(false);
+      return;
+    }
+    const load = async () => {
+      const token = await getToken();
+      if (!token) return;
+      setLoading(true);
+      try {
+        const [s, m] = await Promise.all([
+          fetchTeamSettings({ token, orgId: organization.id }),
+          fetchTeamMembers({ token, orgId: organization.id }),
+        ]);
+        setSettings(s);
+        setIsAdmin(s.is_admin);
+        setMembers(m.members);
+        if (s.plan !== "free") {
+          const pm = s.org_settings.paid_monthly_overage_max;
+          if (pm === null || pm === undefined) {
+            setPaidUnlimited(true);
+            setPaidCapInput("");
+          } else {
+            setPaidUnlimited(false);
+            setPaidCapInput(String(pm));
+          }
+        }
+      } catch {
+        setSettings(null);
+        setMembers([]);
+        toast.error("Failed to load team.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    void load();
+  }, [isSignedIn, organization?.id, getToken]);
+
+  useEffect(() => {
+    if (
+      !loading &&
+      searchParams.get("after_checkout") === "1" &&
+      isAdmin &&
+      organization?.id
+    ) {
+      setCheckoutDialogOpen(true);
+    }
+  }, [searchParams, isAdmin, organization?.id, loading]);
+
+  const dismissCheckoutParam = useCallback(() => {
+    searchParams.delete("after_checkout");
+    setSearchParams(searchParams, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const savePaidOverage = async (fromDialog: boolean) => {
+    if (!organization?.id || !settings?.is_admin || settings.plan === "free") return;
+    const token = await getToken();
+    if (!token) return;
+    setSavingPaidOverage(true);
+    try {
+      let max: number | null;
+      if (paidUnlimited) max = null;
+      else {
+        const n = parseInt(paidCapInput, 10);
+        if (isNaN(n) || n < 0) {
+          toast.error("Enter a valid non-negative number, or choose unlimited.");
+          return;
+        }
+        max = n;
+      }
+      const next = await updateTeamSettings({
+        token,
+        orgId: organization.id,
+        paid_monthly_overage_max: max,
+      });
+      setSettings(next);
+      toast.success("Overage settings saved.");
+      if (fromDialog) {
+        setCheckoutDialogOpen(false);
+        dismissCheckoutParam();
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save.");
+    } finally {
+      setSavingPaidOverage(false);
+    }
+  };
+
+  if (!isSignedIn) {
+    navigate("/sign-in");
+    return null;
+  }
+  if (!organization) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="pt-32 pb-24 container mx-auto px-4 text-center">
+          <p className="text-muted-foreground">You don&apos;t have a team yet.</p>
+          <Button asChild className="mt-4">
+            <Link to="/pricing">Create a team</Link>
+          </Button>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
+
+  const handleManageBilling = async () => {
+    if (!organization?.id) return;
+    setPortalLoading(true);
+    try {
+      const { url } = await createPortalSession({
+        orgId: organization.id,
+        returnUrl: `${window.location.origin}/team`,
+      });
+      if (url) window.location.href = url;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not open billing.");
+    } finally {
+      setPortalLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Navbar />
+      <div className="pt-32 pb-24">
+        <div className="container mx-auto px-4 lg:px-8 max-w-4xl">
+          <h1 className="text-3xl font-bold tracking-tight">Team</h1>
+          <p className="mt-1 text-muted-foreground">{organization.name}</p>
+
+          {loading && (
+            <div className="mt-8 flex items-center gap-2 text-muted-foreground">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              Loading…
+            </div>
+          )}
+
+          {!loading && settings && (() => {
+            const credits = computeCreditsRemaining({
+              plan: settings.plan,
+              tokens_used: settings.tokens_used,
+              tokens_limit: settings.tokens_limit,
+              overage_used: settings.overage_used,
+              overage_limit: settings.overage_limit,
+            });
+            return (
+            <>
+              {/* Usage summary — everyone sees this */}
+              <section className="mt-10 rounded-xl border border-border bg-card p-8">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <CreditCard className="w-5 h-5" />
+                  Usage &amp; billing
+                </h2>
+                <div className="mt-6 space-y-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Credits this month</p>
+                    <p className="text-2xl font-semibold mt-0.5 tabular-nums">
+                      {credits.totalLeft.toLocaleString()}
+                    </p>
+                    <p className="text-sm text-muted-foreground capitalize mt-1">Plan: {settings.plan}</p>
+                    <p className="text-xs text-muted-foreground mt-2 max-w-lg" title={creditsRemainingTitle(credits)}>
+                      {credits.isFree ? (
+                        <>
+                          Included: {credits.includedLeft.toLocaleString()} / {credits.includedCap.toLocaleString()} credits
+                          {credits.overageCap > 0
+                            ? ` · Overage: ${credits.overageLeft.toLocaleString()} / ${credits.overageCap.toLocaleString()} credits`
+                            : settings.overage_limit == null
+                              ? " · No overage limit (set one in team settings or upgrade)"
+                              : null}
+                        </>
+                      ) : (
+                        <>
+                          {credits.includedLeft.toLocaleString()} included credits left of {credits.planCap.toLocaleString()}{" "}
+                          · {settings.tokens_used.toLocaleString()} total used
+                          {credits.paidOverageUnlimited
+                            ? " · Metered overage: unlimited cap (set a cap in Team settings if you prefer)"
+                            : credits.paidOverageCap !== null
+                              ? ` · Overage: ${credits.paidOverageLeft.toLocaleString()} / ${credits.paidOverageCap.toLocaleString()} extra addresses`
+                              : null}
+                        </>
+                      )}
+                    </p>
+                    {settings.plan === "free" && (
+                      <p className="text-xs text-amber-600/90 dark:text-amber-400/90 mt-3 max-w-xl">
+                        On the free plan you get {settings.tokens_limit} credits/month per team with no overage. Subscribe on Pricing for
+                        2,000–15,000 included addresses (Corporate and Enterprise are the same tier: 15,000 at 2p
+                        overage).
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-8 pt-6 border-t border-border">
+                  <p className="text-sm font-medium text-foreground">Billing &amp; subscription</p>
+                  <p className="text-sm text-muted-foreground mt-1 max-w-xl">
+                    Invoices, payment method, and plan changes (upgrade, downgrade, or cancel) are managed securely in Stripe. Opening the portal takes you there and back here when you&apos;re done.
+                  </p>
+                  {settings.plan !== "free" && (
+                    <p className="text-xs mt-2 text-muted-foreground">
+                      Metered overage billing status: {settings.paid_overage_billing_enabled ? "Active" : "Not configured"}
+                      {!settings.paid_overage_billing_enabled ? " (set STRIPE_PRICE_OVERAGE_* for this plan in API env)." : ""}
+                    </p>
+                  )}
+                  <Button onClick={handleManageBilling} disabled={portalLoading} className="mt-4">
+                    {portalLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    Open billing portal
+                  </Button>
+                </div>
+              </section>
+
+              {/* Admin: overage and visibility */}
+              {isAdmin && (
+                <section className="mt-10 rounded-xl border border-border bg-card p-8">
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <Settings className="w-5 h-5" />
+                    Team settings
+                  </h2>
+                  {settings.plan !== "free" && (
+                    <div className="mt-6 space-y-4 max-w-xl">
+                      <p className="text-sm text-muted-foreground">
+                        Your plan includes {settings.tokens_limit.toLocaleString()} addresses/month. Beyond that, each
+                        extra address is billed at{" "}
+                        <strong>{overagePencePerAddress(settings.plan)}p</strong> (Stripe metered). Set a monthly cap on
+                        extra addresses to control spend, or choose unlimited metered overage.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          id="paid-ov-unl"
+                          checked={paidUnlimited}
+                          onChange={() => setPaidUnlimited(true)}
+                          className="h-4 w-4"
+                        />
+                        <label htmlFor="paid-ov-unl" className="text-sm cursor-pointer">
+                          Unlimited metered overage (pay per extra address, no cap)
+                        </label>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <input
+                          type="radio"
+                          id="paid-ov-cap"
+                          checked={!paidUnlimited}
+                          onChange={() => setPaidUnlimited(false)}
+                          className="h-4 w-4"
+                        />
+                        <label htmlFor="paid-ov-cap" className="text-sm cursor-pointer whitespace-nowrap">
+                          Cap extra addresses at
+                        </label>
+                        <Input
+                          type="number"
+                          min={0}
+                          className="w-32"
+                          disabled={paidUnlimited}
+                          value={paidCapInput}
+                          onChange={(e) => setPaidCapInput(e.target.value)}
+                          placeholder="0 = none"
+                        />
+                        <span className="text-sm text-muted-foreground">/ month</span>
+                        <Button size="sm" onClick={() => void savePaidOverage(false)} disabled={savingPaidOverage}>
+                          {savingPaidOverage ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {/* Members and permissions */}
+              <section className="mt-10 rounded-xl border border-border bg-card p-8">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <Users className="w-5 h-5" />
+                  Members
+                </h2>
+                {members.length === 0 ? (
+                  <p className="mt-6 text-sm text-muted-foreground">No members to show.</p>
+                ) : (
+                  <div className="mt-6 overflow-x-auto">
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="border-b border-border">
+                          <th className="text-left py-4 pr-6 font-medium">Member</th>
+                          <th className="text-left py-4 pr-6 font-medium">Role</th>
+                          <th className="text-right py-4 pl-6 font-medium">Credits used</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {members.map((m) => (
+                          <tr key={m.user_id} className="border-b border-border/50">
+                            <td className="py-4 pr-6 align-middle">
+                              {[m.first_name, m.last_name].filter(Boolean).join(" ") || m.user_id.slice(0, 12) + "…"}
+                            </td>
+                            <td className="py-4 pr-6 align-middle">{m.role.replace("org:", "")}</td>
+                            <td className="py-4 pl-6 text-right align-middle">{m.tokens_used.toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <p className="mt-6 pt-4 border-t border-border/50 text-xs text-muted-foreground">
+                  To add or remove members and change roles (admin/member), open the menu next to your avatar (top right) → Manage organization.
+                </p>
+              </section>
+            </>
+            );
+          })()}
+
+        <Dialog
+          open={checkoutDialogOpen}
+          onOpenChange={(o) => {
+            setCheckoutDialogOpen(o);
+            if (!o) dismissCheckoutParam();
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Set your overage allowance</DialogTitle>
+              <DialogDescription>
+                Thanks for subscribing. Choose how many extra addresses (beyond your plan&apos;s included amount) you
+                allow each month, or unlimited metered billing. You can change this anytime in Team settings.
+              </DialogDescription>
+            </DialogHeader>
+            {!settings ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : settings.plan === "free" ? (
+              <p className="text-sm text-muted-foreground py-2">
+                Your subscription may still be activating. Refresh in a moment, then set overage in Team settings below
+                — or save once your plan shows as Starter, Pro, or Corporate.
+              </p>
+            ) : (
+              <div className="space-y-4 py-2">
+                <p className="text-sm text-muted-foreground">
+                  Overage rate: <strong>{overagePencePerAddress(settings.plan)}p</strong> per address beyond your{" "}
+                  {settings.tokens_limit.toLocaleString()} included/month.
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    id="dlg-ov-unl"
+                    checked={paidUnlimited}
+                    onChange={() => setPaidUnlimited(true)}
+                    className="h-4 w-4"
+                  />
+                  <label htmlFor="dlg-ov-unl" className="text-sm cursor-pointer">
+                    Unlimited metered overage
+                  </label>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="radio"
+                    id="dlg-ov-cap"
+                    checked={!paidUnlimited}
+                    onChange={() => setPaidUnlimited(false)}
+                    className="h-4 w-4"
+                  />
+                  <label htmlFor="dlg-ov-cap" className="text-sm cursor-pointer">
+                    Cap at
+                  </label>
+                  <Input
+                    type="number"
+                    min={0}
+                    className="w-28"
+                    disabled={paidUnlimited}
+                    value={paidCapInput}
+                    onChange={(e) => setPaidCapInput(e.target.value)}
+                  />
+                  <span className="text-sm text-muted-foreground">extra/month</span>
+                </div>
+              </div>
+            )}
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button variant="outline" onClick={() => { setCheckoutDialogOpen(false); dismissCheckoutParam(); }}>
+                I&apos;ll do this later
+              </Button>
+              {settings && settings.plan !== "free" && (
+                <Button onClick={() => void savePaidOverage(true)} disabled={savingPaidOverage}>
+                  {savingPaidOverage ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  Save
+                </Button>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        </div>
+      </div>
+      <Footer />
+    </div>
+  );
+};
+
+export default Team;

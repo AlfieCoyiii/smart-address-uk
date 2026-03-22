@@ -1,0 +1,12 @@
+{% extends 'parser/base.html' %}
+{% block title %}Email Verified | UK Address Splitter{% endblock %}
+{% block content %}
+<div class="container" style="max-width:430px;margin:4em auto;">
+  <div class="card shadow" style="border-radius:14px;">
+    <div class="card-body p-4 text-center">
+      <h2 class="mb-4" style="font-weight:600;">Email Verified</h2>
+      <p>Your email has been successfully verified. You may now <a href="{% url 'account_login' %}" class="text-primary" style="font-weight:600;text-decoration:underline;">log in</a> to your account.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

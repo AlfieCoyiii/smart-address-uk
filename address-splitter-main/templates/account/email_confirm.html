@@ -1,0 +1,25 @@
+{% extends 'parser/base.html' %}
+{% load i18n account %}
+{% block title %}Confirm Email | UK Address Splitter{% endblock %}
+{% block content %}
+<div class="container" style="max-width:430px;margin:4em auto;">
+  <div class="card shadow" style="border-radius:14px;">
+    <div class="card-body p-4 text-center">
+      <h2 class="mb-4">Confirm Email</h2>
+      {% if confirmation %}
+        {% if can_confirm %}
+          <p>Hi {{ confirmation.email_address.email }},<br>
+          Please confirm that you want to use this address. Once confirmed, you can log in.</p>
+          <form method="post">{% csrf_token %}
+            <button type="submit" class="btn btn-primary-modern mt-3 px-4">Confirm</button>
+          </form>
+        {% else %}
+          <div class="alert alert-warning mt-3 mb-2">Email address already confirmed or link expired.</div>
+        {% endif %}
+      {% else %}
+        <div class="alert alert-danger mt-2">This confirmation link is invalid or has expired.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

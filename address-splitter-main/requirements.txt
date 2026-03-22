@@ -1,0 +1,17 @@
+Django>=5.2,<6.0
+gunicorn
+django-allauth
+psycopg2-binary
+django-humanize
+rapidfuzz
+sklearn-crfsuite
+seqeval
+scikit-learn
+numpy
+pandas
+fastapi
+uvicorn[standard]
+stripe
+python-dotenv
+pyjwt[crypto]
+certifi

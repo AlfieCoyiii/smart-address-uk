@@ -1,0 +1,200 @@
+{% extends 'parser/base.html' %}
+{% load humanize %}
+{% block title %}Profile | UK Address Splitter{% endblock %}
+{% block content %}
+<style>
+    .prof-label { color:#54777d; font-size:0.95em; font-weight:600;}
+    .prof-badge-admin { background:#f35459; color:#fff; font-weight:600; margin-left:7px; font-size:0.86em; border-radius:6px; padding: 2.5px 9px; vertical-align:middle;}
+    .prof-badge-plan { background:#6BE177; color:#244633; font-weight:600; margin-left:6px; font-size:0.93em; border-radius:7px; padding:1.5px 13px;}
+    .prof-badge-none { background:#ced1d8; color:#737a8c; font-weight:700; margin-left:6px; font-size:0.93em; border-radius:7px; padding:1.5px 13px; }
+    .prof-row { margin-bottom:1.15em;}
+    .prof-section-title { color: #265678; font-size: 1.15em; font-weight: 700; margin:1.8em 0 1em 0; letter-spacing: -0.2px;}
+    .prof-company-banner {background:#e4eef6;color:#35596c;padding:12px 21px;border-radius:11px;text-align:center;font-size:1em;margin-bottom:17px;}
+    .prof-sublink {color:#2776ed;text-decoration:underline; font-weight:600;font-size:1em; margin-left:1em;vertical-align:middle;}
+    .prof-sublink:hover { color:#1653b8; }
+    .prof-changepw-link {color:#2776ed;text-decoration:underline; font-weight:600; font-size:1em; display:block; margin:20px 0 0 2px;}
+    .prof-changepw-link:hover { color:#1653b8; }
+    .usage-line {color:#35509a;font-size:0.98em;font-weight:500;margin-bottom:3px;}
+    .login-modern-input {
+      border: none;
+      border-radius: 0;
+      background: transparent;
+      border-bottom: 2px solid #cfd8dc;
+      padding: 0.62em 0 .35em 0;
+      font-size: 1.13em;
+      width: 100%;
+      transition: border-color 0.2s;
+      font-family: 'Poppins', Arial, sans-serif;
+      margin-bottom: 0;
+      outline: none;
+      box-shadow: none;
+    }
+    .login-modern-input:focus {
+      border-color: #6BE177;
+      background: transparent;
+      box-shadow: none;
+    }
+    .team-list-table {
+      width:100%; font-size:1.05em; border-collapse:separate; border-spacing:0 2px;
+    }
+    .team-row:hover { background:#f2f6fb; }
+    .team-member-email {color:#265678;font-weight:600;text-decoration:underline;font-size:1.07em;cursor:pointer;border:none;background:none;outline:none;padding:0;}
+    .team-badge-self {margin-left:7px; padding:3px 11px; font-size:0.89em; font-weight:500; background:#2776ed;color:#fff;border-radius:7px;}
+    .team-member-splits {color:#bbc7cf;font-weight:600;font-size:1em;padding-left:10px;}
+    .team-btn-remove {font-size:0.94em;font-weight:600;padding:2px 13px;border-radius:6px;}
+    .team-usage-row {background:#f6fafd;}
+    @media (max-width:650px) {
+      .container[style*="max-width:650px"] {max-width:97vw!important;}
+    }
+    @media (max-width:500px) {
+      .team-row td {display:block;width:100%!important;min-width:unset!important;text-align:left!important;padding-right:6px!important;}
+      .team-member-splits {text-align:left!important;padding-left:18px!important;}
+      .team-btn-remove {margin-top:6px;display:block;width:100%;}
+      .team-member-email, .team-badge-self {display:inline-block;}
+    }
+</style>
+<div class="container" style="max-width:650px;margin:4.5em auto;">
+  <div class="card shadow" style="border-radius:14px;">
+    <div class="card-body p-4">
+      <h2 class="mb-4 text-center" style="font-weight:700;">Your Profile</h2>
+      <div class="prof-row"><span class="prof-label">Email</span><br>{{ email }}</div>
+      <div class="prof-row"><span class="prof-label">Name</span><br>{{ first_name }} {{ last_name }}</div>
+      <div class="prof-row"><span class="prof-label">Last Login</span><br>{{ last_login|date:'d M Y, H:i' }}</div>
+      <a href="/accounts/password/change/" class="prof-changepw-link">Change Password</a>
+      {% if pending_member_invites and pending_member_invites|length > 0 %}
+        {% with valid_invites=pending_member_invites|dictsort:'id' %}
+          {% if valid_invites %}
+            {% for invite in valid_invites %}
+              {% if invite.company %}
+                {% if forloop.first %}<div class="alert alert-warning" style="margin-bottom:1.2em;padding:1.1em 1.2em 1em 1.2em;"><span style="font-weight:600;font-size:1.15em;">You have team invitations:</span><br>{% endif %}
+                <div style="margin-top:11px;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid #e8e8e8;">
+                  <span style="font-size:1.08em;">Join <strong>{{ invite.company.name }}</strong></span>
+                  {% if invite.invited_by and invite.invited_by.email %}<span style="color:#3367be; font-size:1em;">(invited by {{ invite.invited_by.email }})</span>{% endif %}
+                  <form method="post" style="display:inline;margin-left:18px;">
+                    {% csrf_token %}
+                    <input type="hidden" name="accept_member_invite" value="{{ invite.id }}">
+                    <button type="submit" class="btn btn-success btn-sm" style="font-weight:600;">Accept</button>
+                  </form>
+                  <form method="post" style="display:inline;margin-left:4px;">
+                    {% csrf_token %}
+                    <input type="hidden" name="decline_member_invite" value="{{ invite.id }}">
+                    <button type="submit" class="btn btn-outline-danger btn-sm">Decline</button>
+                  </form>
+                </div>
+                {% if forloop.last %}</div>{% endif %}
+              {% endif %}
+            {% empty %}
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+      {% endif %}
+      {% if accept_invite_feedback and 'Joined' in accept_invite_feedback %}
+        <div class="alert alert-info" style="margin-bottom:1em;">{{ accept_invite_feedback }}</div>
+      {% endif %}
+      <div class="prof-section-title">Company</div>
+      {% if not company_has %}
+        <div class="prof-company-banner mb-3">You are not currently part of a company.</div>
+        <a href="/start-company/" class="btn btn-success prof-action-btn">Create or Join a Company</a>
+      {% else %}
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-weight:600;">{{ company_name }}</span>
+          {% if is_company_admin %}<span class="prof-badge-admin" style="margin-left:0;font-size:0.93em;">Admin</span>{% endif %}
+        </div>
+        <div style="color:#878ea3;font-size:0.97em;margin-left:1px;margin-bottom:1em;">Company ID: <b>{{ company_id }}</b></div>
+      {% endif %}
+      {% if company_has %}
+        <div style="margin-bottom:1.5em;">
+          <div style="margin-bottom:0.66em;font-size:1.11em;font-weight:600;">Team Members</div>
+          <div>
+            <table class="team-list-table mb-2" style="width:100%;">
+              <tbody>
+                {% for member in company_members_info %}
+                <tr class="team-row" style="background:#f8fafc; vertical-align:middle;">
+                  <td style="padding:10px 0 8px 8px; min-width:220px;">
+                    <div style="display:inline-flex; align-items:center; gap:7px; flex-wrap:wrap;">
+                      <button type="button" class="team-member-email team-email-link" data-userid="{{ member.user_id }}">{{ member.email }}</button>
+                      {% if member.is_self %}<span class="team-badge-self" style="margin-top:-2px;">You</span>{% endif %}
+                    </div>
+                  </td>
+                  <td class="team-member-splits" style="text-align:right;min-width:65px;color:#a0b3c3;font-weight:600;font-size:0.99em;">{{ member.usage_this_month|intcomma }} splits</td>
+                  <td style="text-align:right;min-width:90px;padding-right:14px;">
+                    {% if is_company_admin and not member.is_self %}
+                    <form method="post" style="display:inline; margin:0;">
+                      {% csrf_token %}
+                      <button class="btn btn-outline-danger btn-sm team-btn-remove" name="remove_member" value="{{ member.user_id }}" style="min-width:73px;">Remove</button>
+                    </form>
+                    {% endif %}
+                  </td>
+                </tr>
+                <tr class="member-usage-row team-usage-row" id="member-usage-{{ member.user_id }}" style="display:none;">
+                  <td colspan="3" style="padding:9px 6px 7px 28px;color:#335390;font-size:0.99em;border-left:3px solid #6BE177;">
+                    Addresses split this month: {{ member.usage_this_month|intcomma }}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            {% if is_company_admin %}
+            {% if new_member_feedback %}
+              <div class="alert alert-info py-1 px-2 mb-2" style="font-size:.96em;">{{ new_member_feedback }}</div>
+            {% endif %}
+            <form method="post" style="margin-top:0.4em;display:flex;gap:12px;align-items:center;">
+              {% csrf_token %}
+              <input type="email" name="add_member_email" class="login-modern-input" placeholder="Invite new member by email" style="max-width:240px;font-size:0.99em;" required>
+              <button type="submit" class="btn btn-success btn-sm" style="background:#6BE177;font-weight:600;padding:.35em 1.2em 0.32em 1.2em;">Add Member</button>
+            </form>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
+      <div class="prof-section-title" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>Subscription</span>
+        {% if company_subscription != 'none' %}
+          <span class="prof-badge-plan">{{ company_plan_label }}</span>
+        {% else %}
+          <span class="prof-badge-none">No Subscription</span><a href="/billing/" class="prof-sublink">Subscribe</a>
+        {% endif %}
+      </div>
+      {% if company_subscription != 'none' %}
+      <div class="prof-section-title">Plan Settings</div>
+      <div class="prof-row">
+        <div class="usage-line">
+          Addresses split this month: <b>{{ total_splits_this_month|intcomma }} / {{ included_for_plan|intcomma }}</b> included
+        </div>
+        <div class="usage-line">
+          Overage used: <b>{{ overage_used_this_month|intcomma }} / {{ company_overage|intcomma }}</b>
+        </div>
+        {% if overage_error %}
+          <div class="alert alert-danger py-1 px-2" style="font-size:0.97em;margin-bottom:10px;">{{ overage_error }}</div>
+        {% endif %}
+        <form method="post" style="display:inline;margin-top:6px;">
+            {% csrf_token %}
+            {% if is_company_admin %}
+                <input type="number" step="1" min="{{ overage_used_this_month }}" name="max_monthly_overage" value="{{ company_overage|default:'' }}" style="width:98px;text-align:right;display:inline-block;" class="form-control d-inline-block">
+                <button type="submit" class="btn btn-outline-success btn-sm" style="vertical-align:middle;font-weight:600;font-size:.92em;padding:.19em 1.05em;margin-left:9px;">Update</button>
+            {% else %}
+                <input type="text" class="form-control d-inline-block" style="width:120px;text-align:right;display:inline-block;" value="{{ company_overage|intcomma }}" readonly>
+            {% endif %}
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.team-email-link').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var userId = btn.getAttribute('data-userid');
+      var usageRow = document.getElementById('member-usage-' + userId);
+      if (usageRow.style.display === 'none' || usageRow.style.display === '') {
+        usageRow.style.display = 'table-row';
+      } else {
+        usageRow.style.display = 'none';
+      }
+    });
+  });
+});
+</script>

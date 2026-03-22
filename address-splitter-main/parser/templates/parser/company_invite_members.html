@@ -1,0 +1,77 @@
+{% extends 'parser/base.html' %}
+{% block title %}Add Colleagues | UK Address Splitter{% endblock %}
+{% block content %}
+<div class="container" style="max-width:430px;margin:4em auto;">
+  <div class="card shadow" style="border-radius:14px;">
+    <div class="card-body p-4">
+      {% if not success %}
+        <h2 class="mb-2 text-center" style="font-weight:700;">Add Colleagues to Your Company</h2>
+        <div class="text-center text-muted mb-3" style="font-size:1.09em;">
+          Anyone you add here will be able to use your company's credits, but <span style="font-weight:600;">won't see your card or billing details</span>.<br>
+          You can invite teammates now or later from your dashboard.
+        </div>
+        <form method="post" action="" id="invite-form">
+          {% csrf_token %}
+          <div id="email-fields">
+            <div class="mb-3 email-row">
+              <input type="email" name="email1" class="form-control login-modern-input" style="font-size:1.12em;" placeholder="Teammate's email (max. 5)" autocomplete="off">
+            </div>
+          </div>
+          <button type="submit" class="btn btn-success w-100 mb-2 mt-2" style="background:#6BE177; border:none; font-weight:600;font-size:1.06em;padding:0.7em 0;">Add Colleagues</button>
+        </form>
+        <a href="/billing/" class="btn btn-outline-primary w-100 mt-1" style="font-weight:600;">Do this later</a>
+      {% else %}
+        <h2 class="mb-4 text-center" style="font-weight:700;">All Set!</h2>
+        <ul class="list-unstyled" style="font-size:1.11em;">
+          {% for email, status in invited_list %}
+          <li>{{ email }}: <span class="fw-semibold">{{ status|capfirst }}</span></li>
+          {% endfor %}
+        </ul>
+        <a href="/" class="btn btn-outline-primary w-100 mt-4" style="font-weight:600;">Go to Dashboard</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+<style>
+.login-modern-input {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  border-bottom: 2px solid #cfd8dc;
+  padding: 0.62em 0 .35em 0;
+  font-size: 1.13em;
+  width: 100%;
+  transition: border-color 0.2s;
+  font-family: 'Poppins', Arial, sans-serif;
+  margin-bottom: 0;
+  outline: none;
+  box-shadow: none;
+}
+.login-modern-input:focus {
+  border-color: #6BE177;
+  background: transparent;
+  box-shadow: none;
+}
+</style>
+<script>
+// Dynamically add up to 5 email fields as user enters addresses
+(function() {
+  let maxFields = 5;
+  let container = document.getElementById('email-fields');
+  if (!container) return;
+  container.addEventListener('input', function(e) {
+    if (e.target && e.target.matches('input') && e.target.value && container.childElementCount < maxFields) {
+      // Only add new input if this is the last input and not all filled
+      let rows = container.querySelectorAll('.email-row');
+      if (rows[rows.length-1].querySelector('input').value !== '' && rows.length < maxFields) {
+        let idx = rows.length + 1;
+        let div = document.createElement('div');
+        div.className = 'mb-3 email-row';
+        div.innerHTML = `<input type="email" name="email${idx}" class="form-control login-modern-input" style="font-size:1.12em;" placeholder="Teammate's email (max. 5)" autocomplete="off">`;
+        container.appendChild(div);
+      }
+    }
+  });
+})();
+</script>
+{% endblock %}

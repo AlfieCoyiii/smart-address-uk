@@ -1,0 +1,16 @@
+# Secrets — never commit (use Render / local only)
+.env
+.env.local
+**/.env
+!**/.env.example
+
+# Dependencies & build output
+**/node_modules/
+**/dist/
+**/__pycache__/
+**/*.pyc
+**/venv/
+
+# OS / editor
+.DS_Store
+*.log

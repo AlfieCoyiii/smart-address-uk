@@ -1,0 +1,112 @@
+{% extends 'parser/base.html' %}
+{% load humanize %}
+{% block title %}Pricing | UK Address Splitter{% endblock %}
+{% block content %}
+<style>
+.pricing-card {
+  transition: transform 0.19s cubic-bezier(.35,1.29,.46,1);
+  box-shadow: 0 4px 20px rgba(21,43,55,.09);
+  border-radius: 16px;
+  border: none !important;
+}
+.pricing-card:hover {
+  transform: scale(1.045);
+  box-shadow: 0 10px 32px rgba(53,147,51,.14);
+  z-index:3;
+}
+.pricing-bullets {
+  padding-left: 0;
+  margin-left: 0;
+  list-style: none;
+}
+.pricing-bullets li {
+  display: flex;
+  align-items: center;
+  gap: 0.65em;
+  margin-bottom: 1.13em;
+  color: #253240;
+  font-size: 1.07em;
+  line-height: 1.24;
+  font-weight: 500;
+}
+.pricing-bullet-icon {
+  font-size: 1.17em;
+  color: #b8bec7;
+  vertical-align: middle;
+  margin-top: .04em;
+  line-height: 1;
+}
+.pricing-price-btn {
+  display: block;
+  background:#6BE177;
+  color:#1d334e;
+  font-weight: 700;
+  font-size: 1.17em;
+  border: none;
+  border-radius: 2.2rem;
+  padding: 0.85em 0;
+  margin-top: auto;
+  transition: box-shadow 0.2s;
+  box-shadow: 0 2px 12px rgba(107,225,119,0.11);
+  cursor: pointer;
+  letter-spacing: 0.5px;
+}
+.pricing-price-btn:active, .pricing-price-btn:focus {
+  box-shadow:0 5px 18px rgba(84,177,95,0.21);
+}
+.pricing-subscribe-btn {
+  display: block;
+  background:#3077E7;
+  color:#fff;
+  font-weight:600;
+  font-size:1.09em;
+  border:none;
+  border-radius: 2.2rem;
+  padding: 0.7em 0;
+  margin: 1.01em auto 0 auto;
+  width: 84%;
+  transition:background 0.14s;
+  box-shadow: 0 2px 11px rgba(77,91,214,0.08);
+}
+.pricing-subscribe-btn:hover {
+  background:#265fbc;
+}
+</style>
+<div class="container" style="max-width:1000px; margin:4.5em auto 0 auto;">
+  <h2 class="text-center mb-5" style="font-weight:700; letter-spacing:-1px;">Pricing & Plans</h2>
+  <div class="row justify-content-center align-items-stretch g-4">
+    {% for plan in plans %}
+    <div class="col-md-4">
+      <div class="card h-100 shadow-sm pricing-card">
+        <div class="card-body text-center pt-4 px-4 d-flex flex-column">
+          <h5 class="mb-3" style="font-weight:700; color:#6BE177; letter-spacing:-1px;">{{ plan.tier_name }}</h5>
+          <ul class="pricing-bullets mb-3">
+            <li><span class="pricing-bullet-icon">&bull;</span>{{ plan.n_addresses|intcomma }} addresses per month</li>
+            <li><span class="pricing-bullet-icon">&bull;</span>{{ plan.overage_text }}</li>
+          </ul>
+          <span class="pricing-price-btn">£{{ plan.price|floatformat:2 }} per month</span>
+          <button class="pricing-subscribe-btn" onclick="onSubscribeClick(event)">Subscribe</button>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="alert alert-info mt-5 text-center" style="max-width:700px;margin:36px auto 20px auto;font-size:1.07em;">
+    Overage is the cost of extra addresses above your plan in any month, charged at your plan's rate. Your company admin can set a maximum cap to prevent surprise fees.
+  </div>
+  <div class="text-center mt-4" style="font-size:1.04em;color:#194c22;font-weight:600;">All plans include priority email support.</div>
+</div>
+{% endblock %}
+{% block extra_head %}
+<script>
+function onSubscribeClick(e) {
+  e.preventDefault();
+  var userIsAuthenticated = {{ request.user.is_authenticated|yesno:"true,false" }};
+  if (!userIsAuthenticated) {
+    window.location.href = "/accounts/login/?next=/onboard-billing-admin/self/";
+  } else {
+    window.location.href = "/onboard-billing-admin/self/";
+  }
+}
+</script>
+{% endblock %}

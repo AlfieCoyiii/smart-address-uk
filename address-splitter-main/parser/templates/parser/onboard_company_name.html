@@ -1,0 +1,45 @@
+{% extends 'parser/base.html' %}
+{% block title %}Name Your Company | UK Address Splitter{% endblock %}
+{% block content %}
+<div class="container" style="max-width:430px;margin:4em auto;">
+  <div class="card shadow" style="border-radius:14px;">
+    <div class="card-body p-4">
+      <h2 class="mb-4 text-center" style="font-weight:700;">What is your company called?</h2>
+      {% if has_company %}
+        <div class="alert alert-info mb-3 text-center" style="font-size:1.07em;">
+          Your current company name is: <b>{{ initial_company_name }}</b><br>
+          You can update it below or just confirm.
+        </div>
+      {% endif %}
+      <form method="post" action="">
+        {% csrf_token %}
+        <div class="mb-3">
+          <input type="text" name="company_name" class="form-control login-modern-input" style="font-size:1.11em;" placeholder="Company name" value="{{ initial_company_name|default:'' }}" required>
+        </div>
+        <button type="submit" class="btn btn-success w-100" style="background:#6BE177; border:none; font-weight:600;font-size:1.09em;padding:0.7em 0;">Continue</button>
+      </form>
+    </div>
+  </div>
+</div>
+<style>
+.login-modern-input {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  border-bottom: 2px solid #cfd8dc;
+  padding: 0.62em 0 .35em 0;
+  font-size: 1.13em;
+  width: 100%;
+  transition: border-color 0.2s;
+  font-family: 'Poppins', Arial, sans-serif;
+  margin-bottom: 0;
+  outline: none;
+  box-shadow: none;
+}
+.login-modern-input:focus {
+  border-color: #6BE177;
+  background: transparent;
+  box-shadow: none;
+}
+</style>
+{% endblock %}

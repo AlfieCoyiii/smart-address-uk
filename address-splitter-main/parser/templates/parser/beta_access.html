@@ -1,0 +1,40 @@
+{% extends 'parser/base.html' %}
+{% block title %}Beta Access | UK Address Splitter{% endblock %}
+{% block content %}
+<div class="container" style="max-width:340px;margin:7em auto 0 auto;">
+  <div class="card shadow-sm" style="border-radius:18px;">
+    <div class="card-body p-4">
+      <h2 class="text-center mb-3" style="font-weight:700;">Beta Access Required</h2>
+      <div class="text-center mb-4" style="font-size:1.11em;color:#769bb1;">Please enter your access PIN:</div>
+      {% if error %}<div class="alert alert-danger mb-3 py-2">{{ error }}</div>{% endif %}
+      <form method="post">
+        {% csrf_token %}
+        <input type="password" name="access_pin" class="login-modern-input" style="font-size:1.14em;margin-bottom:2em;padding-left:0.5em;" maxlength="16" placeholder="Enter PIN" autocomplete="one-time-code" autofocus required>
+        <button type="submit" class="btn btn-success w-100" style="background:#6BE177; font-weight:600; font-size:1.08em; padding:.7em 0 0.6em 0; border:none;">Unlock</button>
+        <input type="hidden" name="next" value="{{ next }}">
+      </form>
+    </div>
+  </div>
+</div>
+<style>
+.login-modern-input {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  border-bottom: 2px solid #cfd8dc;
+  padding: 0.62em 0 .35em 0;
+  font-size: 1.13em;
+  width: 100%;
+  transition: border-color 0.2s;
+  font-family: 'Poppins', Arial, sans-serif;
+  margin-bottom: 0;
+  outline: none;
+  box-shadow: none;
+}
+.login-modern-input:focus {
+  border-color: #6BE177;
+  background: transparent;
+  box-shadow: none;
+}
+</style>
+{% endblock %}

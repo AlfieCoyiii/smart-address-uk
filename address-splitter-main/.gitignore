@@ -1,0 +1,12 @@
+.env
+venv/
+__pycache__/
+*.pyc
+# Only ignore stray .pkl in this folder root — Pickles/*.pkl are required at runtime
+/*.pkl
+!crf_model_v3_110925.pkl
+usage.db
+*.sqlite3
+db.sqlite3
+# Large optional pickle (not used by parse_api); kept out of Git to satisfy host push rules
+Pickles/postcode_coords.pkl
