@@ -24,7 +24,18 @@ export function useEffectiveOrganization(): {
   const createOrganization = clerkCreate
     ? async (params: { name: string }) => {
         const org = await clerkCreate(params);
-        if (setActive) await setActive({ organization: org.id });
+        // Make this org active in the session (helps JWT / Clerk state).
+        try {
+          if (setActive) await setActive({ organization: org.id });
+        } catch {
+          // Don’t block — list refresh below is what updates our UI.
+        }
+        // Clerk caches memberships; without revalidate the site can still show “no team” after create.
+        try {
+          await userMemberships?.revalidate?.();
+        } catch {
+          /* user can refresh the page */
+        }
         return { id: org.id, name: org.name };
       }
     : undefined;

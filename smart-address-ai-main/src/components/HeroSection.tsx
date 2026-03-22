@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { ArrowRight, Zap } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const HeroSection = () => {
   return (
@@ -44,7 +45,7 @@ const HeroSection = () => {
               </a>
             </Button>
             <Button variant="hero-outline" size="lg" asChild>
-              <a href="/pricing">View pricing</a>
+              <Link to="/pricing">View pricing</Link>
             </Button>
           </div>
 

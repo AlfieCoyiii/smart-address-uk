@@ -3,7 +3,7 @@ import Footer from "@/components/Footer";
 import { motion } from "framer-motion";
 import { Mail } from "lucide-react";
 
-const CONTACT_EMAIL = "help@smartadress.uk";
+const CONTACT_EMAIL = "help@smartaddress.uk";
 
 const Contact = () => {
   return (
