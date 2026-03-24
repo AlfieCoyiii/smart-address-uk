@@ -22,9 +22,13 @@ const App = () => (
       <Toaster />
       <Sonner />
       <Routes>
+        {/* Host misconfig: some setups Redirect (not Rewrite) to /index.html — fix URL for the router */}
+        <Route path="/index.html" element={<Navigate to="/" replace />} />
         <Route path="/" element={<Index />} />
         <Route path="/pricing" element={<Pricing />} />
+        <Route path="/sign-in" element={<Login />} />
         <Route path="/sign-in/*" element={<Login />} />
+        <Route path="/sign-up" element={<SignUp />} />
         <Route path="/sign-up/*" element={<SignUp />} />
         <Route path="/login" element={<Navigate to="/sign-in" replace />} />
         <Route path="/signup" element={<Navigate to="/sign-up" replace />} />

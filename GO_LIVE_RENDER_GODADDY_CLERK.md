@@ -155,7 +155,11 @@ Vite only outputs **`/index.html`** at the site root. There is no real file at `
 | **Source** | `/*` |
 | **Destination** | `/index.html` |
 
-Save, then trigger a deploy if Render asks. The repo also includes `public/_redirects` (copied into `dist/`) for hosts that read that file; **Render still needs the Dashboard rule above.**
+**Critical:** choose **Rewrite**, not **Redirect**. If you use **Redirect**, the browser URL often becomes `/index.html`, React Router has no `/sign-in`, and you see the app’s **“Oops! Page not found”** (or a blank shell). **Rewrite** keeps the address bar as `/sign-in` while still serving `index.html`.
+
+After saving, **redeploy** the static site (or wait for the next deploy). Confirm in the browser: open `/sign-in` and the URL must stay **`…/sign-in`**, not `…/index.html`.
+
+The build also copies `index.html` → `dist/404.html` for hosts that use a custom 404 page. **`_redirects` in `public/` is ignored by Render** — the Dashboard rule is what matters there.
 
 ### 2.5 Deploy frontend
 
