@@ -140,12 +140,30 @@ Add **exactly** these keys (values from Stripe / Clerk — same as local `.env.l
 
 **Do not** set `VITE_PARSER_API_URL` to your marketing domain — it must be the **Render API** hostname.
 
-### 2.4 Deploy frontend
+### 2.4 SPA rewrite (required for `/sign-in`, refresh, bookmarks)
+
+Vite only outputs **`/index.html`** at the site root. There is no real file at `/sign-in`, `/team`, etc. **React Router** handles those paths **in the browser** only after `index.html` loads.
+
+- **Why “Log in” from the homepage works:** the first load is `/` (real file). Then the app navigates to `/sign-in` in JS — no new HTML request.
+- **Why opening or refreshing `https://yourdomain.com/sign-in` shows 404:** the CDN asks the server for a file named `sign-in`, which does not exist → **white screen / “Not found”.** Clerk then never gets a proper app shell, which also breaks **Continue** on sign-in.
+
+**Fix on Render (Static Site):** Dashboard → your static site → **Redirects / Rewrites** → add a rule ([Render docs](https://render.com/docs/redirects-rewrites)):
+
+| Setting | Value |
+|--------|--------|
+| **Action** | **Rewrite** (not Redirect) |
+| **Source** | `/*` |
+| **Destination** | `/index.html` |
+
+Save, then trigger a deploy if Render asks. The repo also includes `public/_redirects` (copied into `dist/`) for hosts that read that file; **Render still needs the Dashboard rule above.**
+
+### 2.5 Deploy frontend
 
 1. **Create Static Site** / deploy.  
 2. Wait for build.  
 3. Open the **`.onrender.com`** URL Render gives you — site should load.  
-3. Try **Sign in** and **Pricing**. If parser fails, open browser **Console** — often CORS → fix `CORS_ALLOWED_ORIGINS` on the API to match the **exact** URL in the address bar (including `https` and `www` or not).
+4. Open **`/sign-in` in a new tab** (or refresh it) — you should see the login page, **not** 404.  
+5. Try **Sign in** and **Pricing**. If parser fails, open browser **Console** — often CORS → fix `CORS_ALLOWED_ORIGINS` on the API to match the **exact** URL in the address bar (including `https` and `www` or not).
 
 **Every time** you change these env vars on the static site, use **Manual Deploy → Clear build cache & deploy** (or redeploy) so Vite rebuilds with new values.
 
@@ -217,7 +235,8 @@ On the **API** Web Service → **Environment**:
 1. Deploy **API** on Render → copy API URL.  
 2. Set **API** env (Stripe, Clerk JWKS/issuer, **CORS**).  
 3. Deploy **Static Site** on Render with **`VITE_PARSER_API_URL`** = API URL.  
-4. Test on `*.onrender.com`.  
+3b. Add **SPA rewrite** `/*` → `/index.html` (Rewrite) on the static site (§2.4).  
+4. Test on `*.onrender.com` — confirm **`/sign-in` loads when opened directly**.  
 5. Add **custom domain** on **static site** → DNS in GoDaddy.  
 6. Update **CORS** on API to your `https://` domain(s).  
 7. Add domain URLs in **Clerk** Production.  
@@ -231,6 +250,7 @@ On the **API** Web Service → **Environment**:
 |---------|--------|
 | Build fails on API | Read Render **Logs**; often missing file or wrong root directory. |
 | Build fails on static site | Logs show `npm` error; ensure **Root** is `smart-address-ai-main`. |
+| **404 / white screen** on `/sign-in` (refresh or direct URL) | Add Render **SPA rewrite**: Source `/*` → Destination `/index.html`, Action **Rewrite** (see §2.4). |
 | CORS error in browser | `CORS_ALLOWED_ORIGINS` must match site URL exactly (`www` vs non-`www`). |
 | Clerk invalid key | Publishable key on static site; allowed URLs include your domain. |
 | Always “anonymous” on API | `CLERK_JWKS_URL` + `CLERK_ISSUER` for **Production** on API service. |
