@@ -18,8 +18,10 @@ const Login = () => {
             <p className="mt-2 text-sm text-muted-foreground">Log in to your Smart Address UK account</p>
           </div>
           <SignIn
-            routing="hash"
+            routing="path"
+            path="/sign-in"
             signUpUrl="/sign-up"
+            forceRedirectUrl="/"
             fallbackRedirectUrl="/"
           />
           <p className="mt-6 text-center text-sm text-muted-foreground">

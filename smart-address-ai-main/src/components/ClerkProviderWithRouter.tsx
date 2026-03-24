@@ -32,12 +32,19 @@ function toRouterDestination(to: string): string {
 
 type RouterMetadata = { windowNavigate?: (target: string | URL) => void };
 
+/** Path-only destination for same-origin hard navigation (leading slash). */
+function sameOriginAppPath(dest: string): string | null {
+  if (!dest || /^https?:\/\//i.test(dest)) return null;
+  const path = dest.startsWith("/") ? dest : `/${dest}`;
+  if (path.startsWith("//")) return null;
+  return path || "/";
+}
+
 /**
- * Wire Clerk's router hooks to React Router (same pattern as Clerk declarative-mode docs).
- * SignIn/SignUp use `routing="hash"` so step transitions use the URL hash, not pathname +
- * routerPush — avoids Continue spinning with no navigation on some mobile browsers.
- * We still normalize absolute same-origin URLs to paths before navigate().
- * ClerkProvider must sit *inside* BrowserRouter so useNavigate() works.
+ * Clerk path-based SignIn calls routerPush/replace on each step. React Router's navigate()
+ * can get out of sync with Clerk's loaded clerk-js instance (Continue spins forever).
+ * For same-origin paths we use location.assign/replace so the browser and Clerk always match.
+ * ClerkProvider must sit *inside* BrowserRouter (navigate kept as fallback for edge cases).
  */
 export function ClerkProviderWithRouter({ children, publishableKey }: Props) {
   const navigate = useNavigate();
@@ -54,6 +61,11 @@ export function ClerkProviderWithRouter({ children, publishableKey }: Props) {
           if (/^https?:\/\//i.test(dest) && dest === to) {
             return;
           }
+          const path = sameOriginAppPath(dest);
+          if (path) {
+            window.location.assign(path);
+            return;
+          }
           void navigate(dest);
         } catch {
           meta?.windowNavigate?.(to);
@@ -63,6 +75,11 @@ export function ClerkProviderWithRouter({ children, publishableKey }: Props) {
         try {
           const dest = toRouterDestination(to);
           if (/^https?:\/\//i.test(dest) && dest === to) {
+            return;
+          }
+          const path = sameOriginAppPath(dest);
+          if (path) {
+            window.location.replace(path);
             return;
           }
           void navigate(dest, { replace: true });
