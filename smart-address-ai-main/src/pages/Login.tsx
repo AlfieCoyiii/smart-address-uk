@@ -1,14 +1,22 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { NavbarAuth } from "@/components/NavbarAuth";
 import Footer from "@/components/Footer";
 import Logo from "@/components/Logo";
-import { SignInButton, useAuth, useClerk } from "@clerk/clerk-react";
+import { useAuth, useClerk } from "@clerk/clerk-react";
 import { Navigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 
+function signInPortalParams(home: string) {
+  return {
+    redirectUrl: home,
+    signInForceRedirectUrl: home,
+    signInFallbackRedirectUrl: home,
+  } as const;
+}
+
 /**
- * Hosted Account Portal sign-in. `RedirectToSignIn` often renders null (blank middle of the page)
- * while redirecting; we show real UI and call `redirectToSignIn` once, with a button fallback.
+ * Hosted Account Portal sign-in. Uses `buildSignInUrl` + full navigation so the fallback works
+ * even when `redirectToSignIn` / `SignInButton` clicks do nothing (e.g. router or SDK edge cases).
  *
  * Clerk Dashboard → Paths: **Sign-in** = Account Portal (hosted), not application `/sign-in`.
  */
@@ -16,16 +24,22 @@ const Login = () => {
   const { isLoaded, isSignedIn } = useAuth();
   const clerk = useClerk();
   const autoRedirectDone = useRef(false);
+  const home = useMemo(() => `${window.location.origin}/`, []);
+  const [portalUrl, setPortalUrl] = useState("");
 
   useEffect(() => {
-    if (!isLoaded || isSignedIn || autoRedirectDone.current) return;
+    if (!isLoaded || !clerk.loaded || isSignedIn) return;
+    const url = clerk.buildSignInUrl(signInPortalParams(home));
+    if (url) setPortalUrl(url);
+  }, [isLoaded, isSignedIn, clerk, clerk.loaded, home]);
+
+  useEffect(() => {
+    if (!isLoaded || !clerk.loaded || isSignedIn || autoRedirectDone.current) return;
+    const url = clerk.buildSignInUrl(signInPortalParams(home));
+    if (!url) return;
     autoRedirectDone.current = true;
-    const home = `${window.location.origin}/`;
-    void clerk.redirectToSignIn({ redirectUrl: home }).catch((err: unknown) => {
-      console.error("[Login] redirectToSignIn failed:", err);
-      autoRedirectDone.current = false;
-    });
-  }, [isLoaded, isSignedIn, clerk]);
+    window.location.assign(url);
+  }, [isLoaded, isSignedIn, clerk.loaded, clerk, home]);
 
   if (!isLoaded) {
     return (
@@ -55,11 +69,15 @@ const Login = () => {
               Taking you to secure sign-in… If nothing happens, use the button below.
             </p>
           </div>
-          <SignInButton mode="redirect" forceRedirectUrl="/" fallbackRedirectUrl="/">
-            <Button type="button" size="lg" className="w-full">
+          {portalUrl ? (
+            <Button asChild size="lg" className="w-full">
+              <a href={portalUrl}>Continue to sign in</a>
+            </Button>
+          ) : (
+            <Button type="button" size="lg" className="w-full" disabled>
               Continue to sign in
             </Button>
-          </SignInButton>
+          )}
           <Link to="/" className="text-sm text-muted-foreground hover:text-foreground">
             ← Back to home
           </Link>

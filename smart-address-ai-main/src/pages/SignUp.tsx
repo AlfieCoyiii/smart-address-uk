@@ -1,25 +1,39 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { NavbarAuth } from "@/components/NavbarAuth";
 import Logo from "@/components/Logo";
-import { SignUpButton, useAuth, useClerk } from "@clerk/clerk-react";
+import { useAuth, useClerk } from "@clerk/clerk-react";
 import { Link, Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 
-/** Hosted Account Portal sign-up — same pattern as Login (no blank RedirectToSignUp). */
+function signUpPortalParams(home: string) {
+  return {
+    redirectUrl: home,
+    signUpForceRedirectUrl: home,
+    signUpFallbackRedirectUrl: home,
+  } as const;
+}
+
+/** Hosted Account Portal sign-up — same hard-navigation pattern as Login. */
 const SignUp = () => {
   const { isLoaded, isSignedIn } = useAuth();
   const clerk = useClerk();
   const autoRedirectDone = useRef(false);
+  const home = useMemo(() => `${window.location.origin}/`, []);
+  const [portalUrl, setPortalUrl] = useState("");
 
   useEffect(() => {
-    if (!isLoaded || isSignedIn || autoRedirectDone.current) return;
+    if (!isLoaded || !clerk.loaded || isSignedIn) return;
+    const url = clerk.buildSignUpUrl(signUpPortalParams(home));
+    if (url) setPortalUrl(url);
+  }, [isLoaded, isSignedIn, clerk, clerk.loaded, home]);
+
+  useEffect(() => {
+    if (!isLoaded || !clerk.loaded || isSignedIn || autoRedirectDone.current) return;
+    const url = clerk.buildSignUpUrl(signUpPortalParams(home));
+    if (!url) return;
     autoRedirectDone.current = true;
-    const home = `${window.location.origin}/`;
-    void clerk.redirectToSignUp({ redirectUrl: home }).catch((err: unknown) => {
-      console.error("[SignUp] redirectToSignUp failed:", err);
-      autoRedirectDone.current = false;
-    });
-  }, [isLoaded, isSignedIn, clerk]);
+    window.location.assign(url);
+  }, [isLoaded, isSignedIn, clerk.loaded, clerk, home]);
 
   if (!isLoaded) {
     return (
@@ -48,11 +62,15 @@ const SignUp = () => {
               Taking you to secure sign-up… If nothing happens, use the button below.
             </p>
           </div>
-          <SignUpButton mode="redirect" forceRedirectUrl="/" fallbackRedirectUrl="/">
-            <Button type="button" size="lg" className="w-full">
+          {portalUrl ? (
+            <Button asChild size="lg" className="w-full">
+              <a href={portalUrl}>Continue to sign up</a>
+            </Button>
+          ) : (
+            <Button type="button" size="lg" className="w-full" disabled>
               Continue to sign up
             </Button>
-          </SignUpButton>
+          )}
           <p className="text-sm text-muted-foreground">
             Already have an account?{" "}
             <Link to="/sign-in" className="text-primary hover:text-primary/80 font-medium">
