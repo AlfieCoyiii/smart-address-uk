@@ -32,19 +32,9 @@ function toRouterDestination(to: string): string {
 
 type RouterMetadata = { windowNavigate?: (target: string | URL) => void };
 
-/** Path-only destination for same-origin hard navigation (leading slash). */
-function sameOriginAppPath(dest: string): string | null {
-  if (!dest || /^https?:\/\//i.test(dest)) return null;
-  const path = dest.startsWith("/") ? dest : `/${dest}`;
-  if (path.startsWith("//")) return null;
-  return path || "/";
-}
-
 /**
- * Clerk path-based SignIn calls routerPush/replace on each step. React Router's navigate()
- * can get out of sync with Clerk's loaded clerk-js instance (Continue spins forever).
- * For same-origin paths we use location.assign/replace so the browser and Clerk always match.
- * ClerkProvider must sit *inside* BrowserRouter (navigate kept as fallback for edge cases).
+ * Sign-in/up use Clerk Account Portal (redirect), not embedded path-based components.
+ * routerPush/replace still used for UserButton, org UI, etc.
  */
 export function ClerkProviderWithRouter({ children, publishableKey }: Props) {
   const navigate = useNavigate();
@@ -61,11 +51,6 @@ export function ClerkProviderWithRouter({ children, publishableKey }: Props) {
           if (/^https?:\/\//i.test(dest) && dest === to) {
             return;
           }
-          const path = sameOriginAppPath(dest);
-          if (path) {
-            window.location.assign(path);
-            return;
-          }
           void navigate(dest);
         } catch {
           meta?.windowNavigate?.(to);
@@ -75,11 +60,6 @@ export function ClerkProviderWithRouter({ children, publishableKey }: Props) {
         try {
           const dest = toRouterDestination(to);
           if (/^https?:\/\//i.test(dest) && dest === to) {
-            return;
-          }
-          const path = sameOriginAppPath(dest);
-          if (path) {
-            window.location.replace(path);
             return;
           }
           void navigate(dest, { replace: true });

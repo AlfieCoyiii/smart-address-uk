@@ -60,6 +60,23 @@ Your app is wired to **Clerk** for authentication. Follow these steps once to ge
 
 ---
 
+## Hosted sign-in (Account Portal) — required for `/sign-in` in this repo
+
+The app **does not** embed `<SignIn />` on your domain. Visiting **`/sign-in`** sends users to Clerk’s **Account Portal** (hosted pages), then back to your site after sign-in. That avoids “Continue” getting stuck when embedded Clerk and React Router fight over the URL.
+
+**Clerk Dashboard**
+
+1. **Configure** (or **User & authentication**) → **Paths** (or **Domains**).
+2. For **`<SignIn />`**, choose **Clerk Account Portal** / hosted — **not** “application domain” `https://yoursite.com/sign-in`.
+3. Same for **`<SignUp />`** if you use hosted sign-up.
+4. Allow **redirect URLs** for `https://your-production-domain/` (and `http://localhost:8080/` for local dev).
+
+If sign-in stays on **application domain** `/sign-in`, you can get a **redirect loop** (this page only tells Clerk to open sign-in again).
+
+**OAuth:** routes **`/sign-in/sso-callback`** and **`/sign-up/sso-callback`** exist for Clerk’s redirect callback; add them in the dashboard if Clerk asks for allowed URLs.
+
+---
+
 ## Step 5: Run the site and test
 
 1. From **smart-address-ai-main** run:

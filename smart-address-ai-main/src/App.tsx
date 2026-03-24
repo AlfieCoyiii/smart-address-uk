@@ -2,6 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { AuthenticateWithRedirectCallback } from "@clerk/clerk-react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Index from "./pages/Index";
 import Pricing from "./pages/Pricing";
@@ -26,6 +27,8 @@ const App = () => (
         <Route path="/index.html" element={<Navigate to="/" replace />} />
         <Route path="/" element={<Index />} />
         <Route path="/pricing" element={<Pricing />} />
+        <Route path="/sign-in/sso-callback" element={<AuthenticateWithRedirectCallback />} />
+        <Route path="/sign-up/sso-callback" element={<AuthenticateWithRedirectCallback />} />
         <Route path="/sign-in" element={<Login />} />
         <Route path="/sign-in/*" element={<Login />} />
         <Route path="/sign-up" element={<SignUp />} />
