@@ -1,5 +1,4 @@
 import { ClerkProvider } from "@clerk/clerk-react";
-import { flushSync } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { clerkAppearance } from "@/lib/clerkTheme";
 
@@ -34,9 +33,10 @@ function toRouterDestination(to: string): string {
 type RouterMetadata = { windowNavigate?: (target: string | URL) => void };
 
 /**
- * Wire Clerk's router hooks to React Router. Path-based SignIn/SignUp call these on each step.
- * React 18 batches updates — `navigate()` alone can leave Clerk's URL and internal state out of sync
- * so Continue appears to do nothing. flushSync forces the route commit before Clerk continues.
+ * Wire Clerk's router hooks to React Router (same pattern as Clerk declarative-mode docs).
+ * SignIn/SignUp use `routing="hash"` so step transitions use the URL hash, not pathname +
+ * routerPush — avoids Continue spinning with no navigation on some mobile browsers.
+ * We still normalize absolute same-origin URLs to paths before navigate().
  * ClerkProvider must sit *inside* BrowserRouter so useNavigate() works.
  */
 export function ClerkProviderWithRouter({ children, publishableKey }: Props) {
@@ -54,9 +54,7 @@ export function ClerkProviderWithRouter({ children, publishableKey }: Props) {
           if (/^https?:\/\//i.test(dest) && dest === to) {
             return;
           }
-          flushSync(() => {
-            void navigate(dest);
-          });
+          void navigate(dest);
         } catch {
           meta?.windowNavigate?.(to);
         }
@@ -67,9 +65,7 @@ export function ClerkProviderWithRouter({ children, publishableKey }: Props) {
           if (/^https?:\/\//i.test(dest) && dest === to) {
             return;
           }
-          flushSync(() => {
-            void navigate(dest, { replace: true });
-          });
+          void navigate(dest, { replace: true });
         } catch {
           meta?.windowNavigate?.(to);
         }

@@ -17,7 +17,7 @@ const SignUp = () => {
             <p className="mt-2 text-sm text-muted-foreground">Start your 14-day free trial</p>
           </div>
           <ClerkSignUp
-            routing="virtual"
+            routing="hash"
             signInUrl="/sign-in"
             fallbackRedirectUrl="/"
           />

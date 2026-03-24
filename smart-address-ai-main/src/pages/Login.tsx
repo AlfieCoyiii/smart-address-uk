@@ -18,8 +18,7 @@ const Login = () => {
             <p className="mt-2 text-sm text-muted-foreground">Log in to your Smart Address UK account</p>
           </div>
           <SignIn
-            routing="path"
-            path="/sign-in"
+            routing="hash"
             signUpUrl="/sign-up"
             fallbackRedirectUrl="/"
           />
