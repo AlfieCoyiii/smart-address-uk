@@ -5,11 +5,10 @@ import { SignIn, useAuth } from "@clerk/clerk-react";
 import { Navigate, Link } from "react-router-dom";
 
 /**
- * Embedded Clerk `<SignIn />` with path routing (official React Router pattern).
- * Avoids Account Portal + `buildSignInUrl` resolving back to this same URL (no-op redirect).
+ * Embedded `<SignIn />` with **hash** routing so step changes stay off the path React Router
+ * owns; pair with `ClerkProvider` router callbacks that use full `location.assign`.
  *
- * Clerk Dashboard → Paths: point **Sign-in** at your app, e.g. `https://your-domain/sign-in`
- * (component / application URL), not only Account Portal unless you intentionally use hosted pages.
+ * Clerk Dashboard → Paths: application sign-in URL e.g. `https://your-domain/sign-in`.
  */
 const Login = () => {
   const { isLoaded, isSignedIn } = useAuth();
@@ -38,10 +37,8 @@ const Login = () => {
           <Logo />
           <div className="w-full flex justify-center [&_.cl-rootBox]:mx-auto [&_.cl-card]:shadow-lg">
             <SignIn
-              routing="path"
-              path="/sign-in"
+              routing="hash"
               fallbackRedirectUrl="/"
-              forceRedirectUrl="/"
               signUpUrl="/sign-up"
             />
           </div>

@@ -3,7 +3,7 @@ import Logo from "@/components/Logo";
 import { SignUp, useAuth } from "@clerk/clerk-react";
 import { Link, Navigate } from "react-router-dom";
 
-/** Embedded `<SignUp />` with path routing — pair with `Login.tsx` / `ClerkProvider` settings. */
+/** Embedded `<SignUp />` with hash routing — same strategy as `Login.tsx`. */
 const SignUp = () => {
   const { isLoaded, isSignedIn } = useAuth();
 
@@ -30,10 +30,8 @@ const SignUp = () => {
           <Logo />
           <div className="w-full flex justify-center [&_.cl-rootBox]:mx-auto [&_.cl-card]:shadow-lg">
             <SignUp
-              routing="path"
-              path="/sign-up"
+              routing="hash"
               fallbackRedirectUrl="/"
-              forceRedirectUrl="/"
               signInUrl="/sign-in"
             />
           </div>

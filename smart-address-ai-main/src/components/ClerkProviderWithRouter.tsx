@@ -1,6 +1,4 @@
 import { ClerkProvider } from "@clerk/clerk-react";
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { clerkAppearance } from "@/lib/clerkTheme";
 
 type Props = {
@@ -8,45 +6,31 @@ type Props = {
   publishableKey: string;
 };
 
-/**
- * Clerk sometimes passes absolute URLs to router callbacks. React Router's navigate()
- * expects a path — passing a full URL can leave sign-in stuck after "Continue" (spinner stops, no navigation).
- */
-function toRouterDestination(to: string): string {
-  if (!to) return "/";
-  try {
-    if (/^https?:\/\//i.test(to)) {
-      const url = new URL(to);
-      if (url.origin === window.location.origin) {
-        const path = url.pathname + url.search + url.hash;
-        return path || "/";
-      }
-      // Different origin (e.g. Account Portal): full navigation
-      window.location.assign(to);
-      return to;
-    }
-  } catch {
-    /* use raw `to` below */
-  }
-  return to;
-}
-
 type RouterMetadata = { windowNavigate?: (target: string | URL) => void };
 
 /**
- * Embedded `<SignIn />` / `<SignUp />` on `/sign-in` and `/sign-up` with path routing.
- * routerPush/replace handles path steps; cross-origin targets use full `location.assign`.
+ * Clerk + React Router often desync when `navigate()` is used for Clerk's internal steps
+ * (spinner stops, no UI change). Use full `location.assign` / `replace` instead.
+ *
+ * Do not set `allowedRedirectOrigins` unless you have a specific need — an overly tight
+ * list can make Clerk treat return URLs as unsafe and break sign-in.
  */
+function clerkHardNavigate(to: string, replace: boolean, meta?: RouterMetadata) {
+  if (!to) return;
+  const w = window.location;
+  try {
+    const target = /^https?:\/\//i.test(to) ? to : `${w.origin}${to.startsWith("/") ? to : `/${to}`}`;
+    if (replace) {
+      w.replace(target);
+    } else {
+      w.assign(target);
+    }
+  } catch {
+    meta?.windowNavigate?.(to);
+  }
+}
+
 export function ClerkProviderWithRouter({ children, publishableKey }: Props) {
-  const navigate = useNavigate();
-  const [allowedRedirectOrigins, setAllowedRedirectOrigins] = useState<
-    Array<string | RegExp> | undefined
-  >(undefined);
-
-  useEffect(() => {
-    setAllowedRedirectOrigins([window.location.origin]);
-  }, []);
-
   return (
     <ClerkProvider
       publishableKey={publishableKey}
@@ -56,28 +40,11 @@ export function ClerkProviderWithRouter({ children, publishableKey }: Props) {
       signUpUrl="/sign-up"
       signInFallbackRedirectUrl="/"
       signUpFallbackRedirectUrl="/"
-      allowedRedirectOrigins={allowedRedirectOrigins}
       routerPush={(to, meta?: RouterMetadata) => {
-        try {
-          const dest = toRouterDestination(to);
-          if (/^https?:\/\//i.test(dest) && dest === to) {
-            return;
-          }
-          void navigate(dest);
-        } catch {
-          meta?.windowNavigate?.(to);
-        }
+        clerkHardNavigate(to, false, meta);
       }}
       routerReplace={(to, meta?: RouterMetadata) => {
-        try {
-          const dest = toRouterDestination(to);
-          if (/^https?:\/\//i.test(dest) && dest === to) {
-            return;
-          }
-          void navigate(dest, { replace: true });
-        } catch {
-          meta?.windowNavigate?.(to);
-        }
+        clerkHardNavigate(to, true, meta);
       }}
     >
       {children}
