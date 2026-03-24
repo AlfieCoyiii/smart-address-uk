@@ -22,10 +22,9 @@ const SignUp = () => {
             <p className="mt-2 text-sm text-muted-foreground">Start your 14-day free trial</p>
           </div>
           <ClerkSignUp
-            routing="path"
-            path="/sign-up"
+            routing="virtual"
             signInUrl="/sign-in"
-            afterSignUpUrl="/"
+            fallbackRedirectUrl="/"
           />
           <p className="mt-6 text-center text-sm text-muted-foreground">
             Already have an account?{" "}

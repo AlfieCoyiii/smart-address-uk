@@ -33,7 +33,8 @@ function toRouterDestination(to: string): string {
 type RouterMetadata = { windowNavigate?: (target: string | URL) => void };
 
 /**
- * Clerk path-based SignIn/SignUp need routerPush/routerReplace wired to React Router.
+ * Wire Clerk's router hooks to React Router. Needed for path-based flows and post-auth redirects.
+ * SignIn/SignUp use `routing="virtual"` so step-to-step navigation does not depend on these callbacks.
  * ClerkProvider must sit *inside* BrowserRouter so useNavigate() works.
  */
 export function ClerkProviderWithRouter({ children, publishableKey }: Props) {
@@ -46,15 +47,6 @@ export function ClerkProviderWithRouter({ children, publishableKey }: Props) {
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
       routerPush={(to, meta?: RouterMetadata) => {
-        // Clerk often passes windowNavigate — using it avoids React Router getting stuck after "Continue".
-        if (meta?.windowNavigate) {
-          try {
-            meta.windowNavigate(to);
-            return;
-          } catch {
-            /* fall through */
-          }
-        }
         try {
           const dest = toRouterDestination(to);
           if (/^https?:\/\//i.test(dest) && dest === to) {
@@ -66,14 +58,6 @@ export function ClerkProviderWithRouter({ children, publishableKey }: Props) {
         }
       }}
       routerReplace={(to, meta?: RouterMetadata) => {
-        if (meta?.windowNavigate) {
-          try {
-            meta.windowNavigate(to);
-            return;
-          } catch {
-            /* fall through */
-          }
-        }
         try {
           const dest = toRouterDestination(to);
           if (/^https?:\/\//i.test(dest) && dest === to) {
