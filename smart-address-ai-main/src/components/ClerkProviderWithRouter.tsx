@@ -1,4 +1,5 @@
 import { ClerkProvider } from "@clerk/clerk-react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { clerkAppearance } from "@/lib/clerkTheme";
 
@@ -33,11 +34,19 @@ function toRouterDestination(to: string): string {
 type RouterMetadata = { windowNavigate?: (target: string | URL) => void };
 
 /**
- * Sign-in/up use Clerk Account Portal (redirect), not embedded path-based components.
- * routerPush/replace still used for UserButton, org UI, etc.
+ * Embedded `<SignIn />` / `<SignUp />` on `/sign-in` and `/sign-up` with path routing.
+ * routerPush/replace handles path steps; cross-origin targets use full `location.assign`.
  */
 export function ClerkProviderWithRouter({ children, publishableKey }: Props) {
   const navigate = useNavigate();
+  const [allowedRedirectOrigins, setAllowedRedirectOrigins] = useState<
+    Array<string | RegExp> | undefined
+  >(undefined);
+
+  useEffect(() => {
+    setAllowedRedirectOrigins([window.location.origin]);
+  }, []);
+
   return (
     <ClerkProvider
       publishableKey={publishableKey}
@@ -45,6 +54,9 @@ export function ClerkProviderWithRouter({ children, publishableKey }: Props) {
       appearance={clerkAppearance}
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
+      signInFallbackRedirectUrl="/"
+      signUpFallbackRedirectUrl="/"
+      allowedRedirectOrigins={allowedRedirectOrigins}
       routerPush={(to, meta?: RouterMetadata) => {
         try {
           const dest = toRouterDestination(to);

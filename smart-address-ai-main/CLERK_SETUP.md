@@ -60,20 +60,22 @@ Your app is wired to **Clerk** for authentication. Follow these steps once to ge
 
 ---
 
-## Hosted sign-in (Account Portal) — required for `/sign-in` in this repo
+## Sign-in URL in Clerk (Paths) — must match this app
 
-The app **does not** embed `<SignIn />` on your domain. Visiting **`/sign-in`** sends users to Clerk’s **Account Portal** (hosted pages), then back to your site after sign-in. That avoids “Continue” getting stuck when embedded Clerk and React Router fight over the URL.
+The app embeds **`<SignIn />` and `<SignUp />`** on **`/sign-in`** and **`/sign-up`** with path routing (Clerk’s recommended React Router setup). Auth runs on **your domain**, not a separate redirect-only page.
 
 **Clerk Dashboard**
 
-1. **Configure** (or **User & authentication**) → **Paths** (or **Domains**).
-2. For **`<SignIn />`**, choose **Clerk Account Portal** / hosted — **not** “application domain” `https://yoursite.com/sign-in`.
-3. Same for **`<SignUp />`** if you use hosted sign-up.
-4. Allow **redirect URLs** for `https://your-production-domain/` (and `http://localhost:8080/` for local dev).
+1. **Configure** → **Paths** (or **User & authentication** → **Paths**).
+2. Set the sign-in URL to your **application** page, e.g. **`https://your-production-domain/sign-in`** (and sign-up **`…/sign-up`**).  
+   If you instead force **Account Portal only** while the code embeds components, URLs and redirects can disagree and flows may appear “stuck”.
+3. Under **Allowed redirect URLs**, include:
+   - `https://your-production-domain/` (and `https://www.` if you use www)
+   - `http://localhost:8080/` and `http://127.0.0.1:8080/` for local dev
 
-If sign-in stays on **application domain** `/sign-in`, you can get a **redirect loop** (this page only tells Clerk to open sign-in again).
+**OAuth:** routes **`/sign-in/sso-callback`** and **`/sign-up/sso-callback`** mount **`AuthenticateWithRedirectCallback`**; allow those paths in the dashboard if Clerk asks.
 
-**OAuth:** routes **`/sign-in/sso-callback`** and **`/sign-up/sso-callback`** exist for Clerk’s redirect callback; add them in the dashboard if Clerk asks for allowed URLs.
+The frontend also sets **`allowedRedirectOrigins`** to the current **`window.location.origin`** so redirect validation matches the tab you’re on (important if you use both apex and `www` — add both origins in Clerk if needed).
 
 ---
 
@@ -134,7 +136,7 @@ If the webhook is missing, the app still calls **`POST /team/ensure-workspace`**
 ## What’s already done in the app
 
 - **ClerkProvider** wraps the app and uses `VITE_CLERK_PUBLISHABLE_KEY`.
-- **/sign-in** and **/sign-up** show Clerk’s sign-in and sign-up components (with your Logo and copy above them).
+- **/sign-in** and **/sign-up** embed Clerk **`<SignIn />` / `<SignUp />`** (path routing) with your Logo and layout.
 - **/login** and **/signup** redirect to **/sign-in** and **/sign-up** so old links still work.
 - **Navbar**: when signed out you see “Log in” and “Get Started”; when signed in you see Clerk’s **UserButton** (avatar and account menu).
 
