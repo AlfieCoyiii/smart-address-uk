@@ -150,9 +150,9 @@
   color: #ffffff !important;
 }
 
-/* Keep default org logo but hide logo upload – no custom org images */
-.cl-rootBox input[type="file"],
-[data-clerk-component] input[type="file"] {
+/* Hide org/user logo file upload only — scoped so SignIn/SignUp forms are never affected */
+[data-clerk-component="UserProfile"] input[type="file"],
+[data-clerk-component="OrganizationProfile"] input[type="file"] {
   display: none !important;
   visibility: hidden !important;
   position: absolute !important;
@@ -161,10 +161,9 @@
   opacity: 0 !important;
   pointer-events: none !important;
 }
-/* Hide only the upload control (label/div that wraps the file input), not the whole form */
-.cl-rootBox div:has(> input[type="file"]),
-.cl-rootBox label:has(input[type="file"]),
-[data-clerk-component] div:has(> input[type="file"]),
-[data-clerk-component] label:has(input[type="file"]) {
+[data-clerk-component="UserProfile"] div:has(> input[type="file"]),
+[data-clerk-component="UserProfile"] label:has(input[type="file"]),
+[data-clerk-component="OrganizationProfile"] div:has(> input[type="file"]),
+[data-clerk-component="OrganizationProfile"] label:has(input[type="file"]) {
   display: none !important;
 }
