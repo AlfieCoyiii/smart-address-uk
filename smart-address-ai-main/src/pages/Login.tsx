@@ -1,4 +1,4 @@
-import Navbar from "@/components/Navbar";
+import { NavbarAuth } from "@/components/NavbarAuth";
 import Footer from "@/components/Footer";
 import Logo from "@/components/Logo";
 import { SignIn } from "@clerk/clerk-react";
@@ -7,7 +7,7 @@ import { Link } from "react-router-dom";
 const Login = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <Navbar />
+      <NavbarAuth />
       <div className="flex-1 flex items-center justify-center px-4 pt-16 pb-16">
         <div className="w-full max-w-sm flex flex-col items-center">
           <div className="text-center mb-6">
