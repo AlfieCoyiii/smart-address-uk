@@ -4,7 +4,7 @@ import App from "./App.tsx";
 import "./index.css";
 import { RootErrorBoundary } from "@/components/RootErrorBoundary";
 import { ClerkKeyHelp } from "@/components/ClerkKeyHelp";
-import { ClerkProviderWithRouter } from "@/components/ClerkProviderWithRouter";
+import { AppClerkProvider } from "@/components/AppClerkProvider";
 
 const raw = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const publishableKey = typeof raw === "string" ? raw.trim() : "";
@@ -38,9 +38,9 @@ createRoot(document.getElementById("root")!).render(
       <ClerkKeyHelp reason={keyStatus} />
     ) : (
       <RootErrorBoundary>
-        <ClerkProviderWithRouter publishableKey={publishableKey}>
+        <AppClerkProvider publishableKey={publishableKey}>
           <App />
-        </ClerkProviderWithRouter>
+        </AppClerkProvider>
       </RootErrorBoundary>
     )}
   </BrowserRouter>

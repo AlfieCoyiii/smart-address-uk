@@ -2,36 +2,12 @@ import { NavbarAuth } from "@/components/NavbarAuth";
 import Logo from "@/components/Logo";
 import { SignUp as ClerkSignUp, useAuth } from "@clerk/clerk-react";
 import { Link, Navigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { useSlowLoadFlag } from "@/hooks/useSlowClerkLoad";
 
-/** Embedded `<SignUp />` with path routing — same strategy as `Login.tsx`. */
+/** Same reset strategy as `Login.tsx`: no `isLoaded` gate; hash routing; `userId` redirect only. */
 const SignUp = () => {
-  const { isLoaded, isSignedIn } = useAuth({ treatPendingAsSignedOut: true });
-  const clerkStuck = useSlowLoadFlag(!isLoaded);
+  const { userId } = useAuth();
 
-  if (!isLoaded) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col">
-        <NavbarAuth />
-        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-4 pt-16 pb-16">
-          <p className="text-sm text-muted-foreground">Loading…</p>
-          {clerkStuck && (
-            <div className="flex flex-col items-center gap-2 text-center max-w-sm">
-              <p className="text-sm text-muted-foreground">
-                Clerk is taking unusually long. Try a full refresh.
-              </p>
-              <Button type="button" variant="secondary" size="sm" onClick={() => window.location.reload()}>
-                Refresh page
-              </Button>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  if (isSignedIn) {
+  if (userId) {
     return <Navigate to="/" replace />;
   }
 
@@ -43,10 +19,10 @@ const SignUp = () => {
           <Logo />
           <div className="w-full flex justify-center [&_.cl-rootBox]:mx-auto [&_.cl-card]:shadow-lg">
             <ClerkSignUp
-              routing="path"
-              path="/sign-up"
+              routing="hash"
               fallbackRedirectUrl="/"
               signInUrl="/sign-in"
+              fallback={<p className="text-sm text-muted-foreground">Loading sign-up…</p>}
             />
           </div>
           <p className="text-sm text-muted-foreground">
