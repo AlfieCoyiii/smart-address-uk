@@ -1,9 +1,9 @@
 import { NavbarAuth } from "@/components/NavbarAuth";
 import Logo from "@/components/Logo";
-import { SignUp, useAuth } from "@clerk/clerk-react";
+import { SignUp as ClerkSignUp, useAuth } from "@clerk/clerk-react";
 import { Link, Navigate } from "react-router-dom";
 
-/** Embedded `<SignUp />` with hash routing — same strategy as `Login.tsx`. */
+/** Embedded `<SignUp />` with path routing — same strategy as `Login.tsx`. */
 const SignUp = () => {
   const { isLoaded, isSignedIn } = useAuth();
 
@@ -29,8 +29,9 @@ const SignUp = () => {
         <div className="w-full max-w-md flex flex-col items-center gap-8">
           <Logo />
           <div className="w-full flex justify-center [&_.cl-rootBox]:mx-auto [&_.cl-card]:shadow-lg">
-            <SignUp
-              routing="hash"
+            <ClerkSignUp
+              routing="path"
+              path="/sign-up"
               fallbackRedirectUrl="/"
               signInUrl="/sign-in"
             />

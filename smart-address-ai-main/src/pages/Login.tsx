@@ -5,8 +5,8 @@ import { SignIn, useAuth } from "@clerk/clerk-react";
 import { Navigate, Link } from "react-router-dom";
 
 /**
- * Embedded `<SignIn />` with **hash** routing so step changes stay off the path React Router
- * owns; pair with `ClerkProvider` router callbacks that use full `location.assign`.
+ * Path routing + `/sign-in/*` in `App.tsx` so Clerk can own `/sign-in/...` segments without 404s.
+ * Pair with `ClerkProvider` `routerPush` / `routerReplace` using React Router `navigate` (not full reloads).
  *
  * Clerk Dashboard → Paths: application sign-in URL e.g. `https://your-domain/sign-in`.
  */
@@ -37,7 +37,8 @@ const Login = () => {
           <Logo />
           <div className="w-full flex justify-center [&_.cl-rootBox]:mx-auto [&_.cl-card]:shadow-lg">
             <SignIn
-              routing="hash"
+              routing="path"
+              path="/sign-in"
               fallbackRedirectUrl="/"
               signUpUrl="/sign-up"
             />

@@ -1,4 +1,5 @@
 import { ClerkProvider } from "@clerk/clerk-react";
+import { useNavigate } from "react-router-dom";
 import { clerkAppearance } from "@/lib/clerkTheme";
 
 type Props = {
@@ -9,28 +10,35 @@ type Props = {
 type RouterMetadata = { windowNavigate?: (target: string | URL) => void };
 
 /**
- * Clerk + React Router often desync when `navigate()` is used for Clerk's internal steps
- * (spinner stops, no UI change). Use full `location.assign` / `replace` instead.
- *
- * Do not set `allowedRedirectOrigins` unless you have a specific need — an overly tight
- * list can make Clerk treat return URLs as unsafe and break sign-in.
+ * Use React Router for same-origin navigations so Clerk step changes stay in-SPA.
+ * Full `window.location` reloads here interrupt clerk-js mid-flow (e.g. Continue appears to do nothing).
+ * Cross-origin URLs still use a hard navigation; Clerk can pass `metadata.windowNavigate` as a fallback.
  */
-function clerkHardNavigate(to: string, replace: boolean, meta?: RouterMetadata) {
+function clerkRouterNavigate(
+  to: string,
+  replace: boolean,
+  navigate: ReturnType<typeof useNavigate>,
+  meta?: RouterMetadata
+) {
   if (!to) return;
-  const w = window.location;
-  try {
-    const target = /^https?:\/\//i.test(to) ? to : `${w.origin}${to.startsWith("/") ? to : `/${to}`}`;
-    if (replace) {
-      w.replace(target);
-    } else {
-      w.assign(target);
+  if (/^https?:\/\//i.test(to)) {
+    try {
+      if (replace) window.location.replace(to);
+      else window.location.assign(to);
+    } catch {
+      meta?.windowNavigate?.(to);
     }
+    return;
+  }
+  try {
+    navigate(to, { replace });
   } catch {
     meta?.windowNavigate?.(to);
   }
 }
 
 export function ClerkProviderWithRouter({ children, publishableKey }: Props) {
+  const navigate = useNavigate();
   return (
     <ClerkProvider
       publishableKey={publishableKey}
@@ -41,10 +49,10 @@ export function ClerkProviderWithRouter({ children, publishableKey }: Props) {
       signInFallbackRedirectUrl="/"
       signUpFallbackRedirectUrl="/"
       routerPush={(to, meta?: RouterMetadata) => {
-        clerkHardNavigate(to, false, meta);
+        clerkRouterNavigate(to, false, navigate, meta);
       }}
       routerReplace={(to, meta?: RouterMetadata) => {
-        clerkHardNavigate(to, true, meta);
+        clerkRouterNavigate(to, true, navigate, meta);
       }}
     >
       {children}
