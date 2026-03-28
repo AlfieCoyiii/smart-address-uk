@@ -3,6 +3,8 @@ import Footer from "@/components/Footer";
 import Logo from "@/components/Logo";
 import { SignIn, useAuth } from "@clerk/clerk-react";
 import { Navigate, Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { useSlowLoadFlag } from "@/hooks/useSlowClerkLoad";
 
 /**
  * Path routing + `/sign-in/*` in `App.tsx` so Clerk can own `/sign-in/...` segments without 404s.
@@ -11,14 +13,25 @@ import { Navigate, Link } from "react-router-dom";
  * Clerk Dashboard → Paths: application sign-in URL e.g. `https://your-domain/sign-in`.
  */
 const Login = () => {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useAuth({ treatPendingAsSignedOut: true });
+  const clerkStuck = useSlowLoadFlag(!isLoaded);
 
   if (!isLoaded) {
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <NavbarAuth />
-        <div className="flex-1 flex items-center justify-center px-4 pt-16 pb-16">
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-4 pt-16 pb-16">
           <p className="text-sm text-muted-foreground">Loading…</p>
+          {clerkStuck && (
+            <div className="flex flex-col items-center gap-2 text-center max-w-sm">
+              <p className="text-sm text-muted-foreground">
+                Clerk is taking unusually long. Try a full refresh (clears a wedged client without losing your account).
+              </p>
+              <Button type="button" variant="secondary" size="sm" onClick={() => window.location.reload()}>
+                Refresh page
+              </Button>
+            </div>
+          )}
         </div>
         <Footer />
       </div>

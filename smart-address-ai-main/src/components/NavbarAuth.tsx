@@ -36,7 +36,7 @@ function SignOutCTAs({ onNavigate }: { onNavigate?: () => void }) {
 export function NavbarAuth() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
-  const { isLoaded } = useAuth();
+  const { isLoaded } = useAuth({ treatPendingAsSignedOut: true });
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-border/50">

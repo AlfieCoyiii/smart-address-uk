@@ -9,10 +9,24 @@ type Props = {
 
 type RouterMetadata = { windowNavigate?: (target: string | URL) => void };
 
+/** Clerk calls `routerReplace('/')` after sign-out; SPA-only `navigate` often leaves UI/session desynced. */
+function isReplaceToSameOriginRoot(to: string): boolean {
+  const origin = window.location.origin;
+  if (to === "/" || to === "") return true;
+  try {
+    const url = /^https?:\/\//i.test(to) ? new URL(to) : new URL(to, origin);
+    if (url.origin !== origin) return false;
+    const p = url.pathname;
+    return (p === "/" || p === "") && url.hash === "";
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Use React Router for same-origin navigations so Clerk step changes stay in-SPA.
- * Full `window.location` reloads here interrupt clerk-js mid-flow (e.g. Continue appears to do nothing).
- * Cross-origin URLs still use a hard navigation; Clerk can pass `metadata.windowNavigate` as a fallback.
+ * Same-origin path steps: React Router `navigate` (no full reload).
+ * Cross-origin: hard navigation.
+ * Replace navigation to app `/`: full reload so cookies + Clerk client match what the UI shows (sign-out).
  */
 function clerkRouterNavigate(
   to: string,
@@ -21,6 +35,15 @@ function clerkRouterNavigate(
   meta?: RouterMetadata
 ) {
   if (!to) return;
+
+  if (replace && isReplaceToSameOriginRoot(to)) {
+    const target = /^https?:\/\//i.test(to)
+      ? to
+      : `${window.location.origin}${to.startsWith("/") ? to : `/${to}`}`;
+    window.location.replace(target);
+    return;
+  }
+
   if (/^https?:\/\//i.test(to)) {
     try {
       if (replace) window.location.replace(to);
