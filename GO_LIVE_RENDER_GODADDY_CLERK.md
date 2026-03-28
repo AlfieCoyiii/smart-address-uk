@@ -171,6 +171,28 @@ The build also copies `index.html` → `dist/404.html` for hosts that use a cust
 
 **Every time** you change these env vars on the static site, use **Manual Deploy → Clear build cache & deploy** (or redeploy) so Vite rebuilds with new values.
 
+### 2.5.1 “I pushed but the website never changes”
+
+This almost always means the **wrong service** is being updated, the **wrong root directory**, or **cache**.
+
+| Check | What to do |
+|-------|------------|
+| **Which Render service?** | Open the **Static Site** (not the Python **Web Service**). Only the static site serves the React app. |
+| **Root Directory** | Must be exactly **`smart-address-ai-main`** (this repo is a monorepo). If this is blank or `.`, the site is not building from the Vite app. |
+| **Publish Directory** | **`dist`** |
+| **Latest deploy** | Static site → **Events** → confirm the commit SHA matches GitHub `main`. |
+| **Clear cache** | **Manual Deploy** → **Clear build cache & deploy**. |
+| **Prove the bundle** | On your live URL, open DevTools → **Console**. You should see **`[SmartAddressUK] deploy revision: abc1234`** where `abc1234` is the **first 7 characters** of the commit Render built. If it never matches your latest push, this service is not deploying that repo/branch/root. |
+| **Browser cache** | Hard refresh, or try **Incognito**, or DevTools → Network → **Disable cache**. |
+
+### 2.5.2 “Start again” (full frontend reset on Render)
+
+1. In Render, open the **static site** → confirm **Root Directory** = `smart-address-ai-main` and **Branch** = `main`.  
+2. **Manual Deploy → Clear build cache & deploy**.  
+3. Verify console shows **`deploy revision`** = current `main` on GitHub.  
+4. If it still fails, **create a new Static Site** from the same repo (forces clean settings), set root + env vars again, point your custom domain to the **new** service (or remove domain from old service first).  
+5. **Clerk “reset”** (only if you suspect a bad instance): Clerk Dashboard → create a **new application**, new **Production** keys, put the new **`VITE_CLERK_PUBLISHABLE_KEY`** on Render and redeploy; update API **`CLERK_JWKS_URL` / `CLERK_ISSUER`** to match. Old users stay in the old Clerk app unless you migrate.
+
 ---
 
 ## Part 3 — Render: connect your **GoDaddy domain** to the **frontend**

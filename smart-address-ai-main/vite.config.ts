@@ -5,6 +5,14 @@ import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  define: {
+    // Render (and some hosts) set this during build — proves the live bundle matches Git.
+    __DEPLOY_REVISION__: JSON.stringify(
+      process.env.RENDER_GIT_COMMIT?.slice(0, 7) ||
+        process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ||
+        "local"
+    ),
+  },
   server: {
     host: "::",
     port: 8080,

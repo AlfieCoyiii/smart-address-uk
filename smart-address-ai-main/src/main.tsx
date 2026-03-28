@@ -32,6 +32,9 @@ function validatePublishableKey(): "ok" | "missing" | "secret_key" | "bad_format
 
 const keyStatus = validatePublishableKey();
 
+// Open DevTools → Console on the live site; should match latest Git short SHA after a good deploy.
+console.info("[SmartAddressUK] deploy revision:", __DEPLOY_REVISION__);
+
 createRoot(document.getElementById("root")!).render(
   <BrowserRouter>
     {keyStatus !== "ok" ? (
