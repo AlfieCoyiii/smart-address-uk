@@ -4,6 +4,50 @@ const getApiBase = () => {
   return "";
 };
 
+/** FastAPI can return detail as string, object, or validation error array — normalize for display. */
+function formatApiDetail(detail: unknown): string {
+  if (detail == null || detail === "") return "";
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (item && typeof item === "object" && "msg" in item) {
+          return String((item as { msg: string }).msg);
+        }
+        try {
+          return JSON.stringify(item);
+        } catch {
+          return String(item);
+        }
+      })
+      .filter(Boolean)
+      .join(" ");
+  }
+  if (typeof detail === "object") {
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return String(detail);
+    }
+  }
+  return String(detail);
+}
+
+async function readApiError(res: Response): Promise<string> {
+  const text = await res.text();
+  if (!text) {
+    return res.statusText || `HTTP ${res.status}`;
+  }
+  try {
+    const body = JSON.parse(text) as { detail?: unknown };
+    const msg = formatApiDetail(body.detail);
+    if (msg) return msg;
+  } catch {
+    /* not JSON */
+  }
+  return text.trim() || res.statusText || `HTTP ${res.status}`;
+}
+
 export async function createCheckoutSession(params: {
   orgId: string;
   priceId: string;
@@ -23,8 +67,8 @@ export async function createCheckoutSession(params: {
     }),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || `Checkout failed: ${res.status}`);
+    const msg = await readApiError(res);
+    throw new Error(msg || `Checkout failed (${res.status})`);
   }
   return res.json();
 }
@@ -44,8 +88,8 @@ export async function createPortalSession(params: {
     }),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || `Portal failed: ${res.status}`);
+    const msg = await readApiError(res);
+    throw new Error(msg || `Portal failed (${res.status})`);
   }
   return res.json();
 }

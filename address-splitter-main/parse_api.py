@@ -22,7 +22,7 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 from contextlib import asynccontextmanager
 import logging
 import secrets
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import FastAPI, HTTPException, Request, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -784,6 +784,21 @@ def _stripe_enabled():
     return stripe is not None and bool(stripe_secret_key)
 
 
+def _stripe_customer_org_id(c: Any) -> str | None:
+    """Read org_id from Stripe Customer.metadata — metadata can be None on some customers."""
+    md = getattr(c, "metadata", None)
+    if md is None:
+        return None
+    try:
+        v = md.get("org_id") if hasattr(md, "get") else None
+    except Exception:
+        return None
+    if v is None:
+        return None
+    s = str(v).strip()
+    return s or None
+
+
 def _stripe_api_key_mode() -> str | None:
     """Infer test vs live from secret key prefix (never expose the key)."""
     k = (stripe_secret_key or "").strip()
@@ -977,7 +992,7 @@ def _report_stripe_metered_overage(org_id: str, overage_price_id: str, quantity:
         return
     try:
         customers = stripe.Customer.list(limit=500)
-        matching = [c for c in customers.data if c.metadata.get("org_id") == org_id]
+        matching = [c for c in customers.data if _stripe_customer_org_id(c) == org_id]
         if not matching:
             print(f"[Stripe overage] No customer for org_id={org_id}")
             return
@@ -1033,7 +1048,7 @@ def _org_has_active_subscription(org_id: str) -> bool:
         return False
     try:
         customers = stripe.Customer.list(limit=500)
-        matching = [c for c in customers.data if c.metadata.get("org_id") == org_id]
+        matching = [c for c in customers.data if _stripe_customer_org_id(c) == org_id]
         if not matching:
             return False
         subs = stripe.Subscription.list(customer=matching[0].id, status="active", limit=1)
@@ -1052,7 +1067,7 @@ def cancel_stripe_subscriptions_for_org(org_id: str) -> int:
     cancelled = 0
     try:
         customers = stripe.Customer.list(limit=500)
-        matching = [c for c in customers.data if c.metadata.get("org_id") == org_id]
+        matching = [c for c in customers.data if _stripe_customer_org_id(c) == org_id]
         for cust in matching:
             subs = stripe.Subscription.list(customer=cust.id, status="active", limit=100)
             for sub in subs.data:
@@ -1079,7 +1094,7 @@ def _org_paid_plan_info(org_id: str) -> tuple[int | None, str | None]:
         return None, None
     try:
         customers = stripe.Customer.list(limit=500)
-        matching = [c for c in customers.data if c.metadata.get("org_id") == org_id]
+        matching = [c for c in customers.data if _stripe_customer_org_id(c) == org_id]
         if not matching:
             return None, None
         subs = stripe.Subscription.list(customer=matching[0].id, status="active", limit=1)
@@ -1156,7 +1171,7 @@ def create_checkout_session(request: CreateCheckoutRequest):
     try:
         # Find or create Stripe Customer for this org (Customer.list doesn't support metadata filter, so we list and filter)
         customers = stripe.Customer.list(limit=100)
-        matching = [c for c in customers.data if c.metadata.get("org_id") == request.org_id]
+        matching = [c for c in customers.data if _stripe_customer_org_id(c) == request.org_id]
         if matching:
             customer_id = matching[0].id
         else:
@@ -1201,7 +1216,7 @@ def create_portal_session(request: CreatePortalRequest):
         raise HTTPException(status_code=503, detail="Stripe is not configured.")
     try:
         customers = stripe.Customer.list(limit=100)
-        matching = [c for c in customers.data if c.metadata.get("org_id") == request.org_id]
+        matching = [c for c in customers.data if _stripe_customer_org_id(c) == request.org_id]
         if not matching:
             raise HTTPException(status_code=404, detail="No subscription found for this team.")
         customer_id = matching[0].id
