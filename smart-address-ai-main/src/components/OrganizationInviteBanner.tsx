@@ -140,8 +140,8 @@ export function OrganizationInviteBanner() {
                 </p>
                 <p>
                   After you join, we&apos;ll switch you to <strong>{confirmInv?.publicOrganizationData.name}</strong> so
-                  credits and billing follow that team. Use the <strong>workspace menu</strong> in the top bar (next to
-                  your usage) to switch between teams anytime.
+                  credits and billing follow that team. Use the <strong>team name</strong> in the top bar to open Team
+                  settings, then the workspace switcher there to change workspace.
                 </p>
                 <p className="text-xs">
                   To leave a workspace you&apos;re not using, open <strong>Team</strong> while that workspace is selected

@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Users, CreditCard, Settings, UserPlus, LogOut } from "lucide-react";
-import { useAuth, useOrganizationList, useUser } from "@clerk/react";
+import { OrganizationSwitcher, useAuth, useOrganizationList, useUser } from "@clerk/react";
 import { useEffectiveOrganization } from "@/hooks/useEffectiveOrganization";
 import {
   fetchTeamSettings,
@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { pickOldestMembership } from "@/lib/workspaceMembership";
 import { requestUsageRefresh } from "@/lib/usageEvents";
+import { clerkAppearance } from "@/lib/clerkTheme";
 
 function overagePencePerAddress(plan: string): number {
   if (plan === "starter") return 6;
@@ -64,6 +65,7 @@ function memberDisplayName(m: Pick<TeamMember, "first_name" | "last_name" | "ema
 
 const Team = () => {
   const { getToken, isSignedIn } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { organization, isProvisioning, isLoaded: orgHookLoaded, provisionError } = useEffectiveOrganization();
@@ -323,8 +325,25 @@ const Team = () => {
       <Navbar />
       <div className="pt-32 pb-24">
         <div className="container mx-auto px-4 lg:px-8 max-w-4xl">
-          <h1 className="text-3xl font-bold tracking-tight">Team</h1>
-          <p className="mt-1 text-muted-foreground">{organization.name}</p>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+            <div className="min-w-0">
+              <h1 className="text-3xl font-bold tracking-tight">Team</h1>
+              <p className="mt-1 text-muted-foreground truncate">{organization.name}</p>
+            </div>
+            <div className="flex shrink-0 items-center justify-start sm:justify-end">
+              <OrganizationSwitcher
+                hidePersonal
+                appearance={clerkAppearance}
+                afterSelectOrganizationUrl={location.pathname}
+                afterCreateOrganizationUrl="/team"
+                organizationProfileProps={{ appearance: clerkAppearance }}
+              />
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground max-w-2xl">
+            Use the control above to switch workspaces or open Clerk&apos;s manage/delete options. The team button in
+            the nav bar brings you here.
+          </p>
 
           {loading && (
             <div className="mt-8 flex items-center gap-2 text-muted-foreground">
@@ -585,7 +604,8 @@ const Team = () => {
                   </div>
                 )}
                 <p className="mt-6 pt-4 border-t border-border/50 text-xs text-muted-foreground">
-                  Admins can invite people above. Use the <strong>workspace menu</strong> in the top bar to switch teams.
+                  Admins can invite people above. Use the <strong>workspace switcher</strong> at the top of this page to
+                  change workspace or open Clerk settings.
                   To remove someone or change their role after they join, use the menu next to your avatar → Manage
                   organization.
                 </p>
