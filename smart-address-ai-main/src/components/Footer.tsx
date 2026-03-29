@@ -17,7 +17,6 @@ const Footer = () => {
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li><Link to="/how-it-works" className="hover:text-foreground transition-colors">How It Works</Link></li>
               <li><Link to="/pricing" className="hover:text-foreground transition-colors">Pricing</Link></li>
-              <li><a href="#demo" className="hover:text-foreground transition-colors">Live Demo</a></li>
             </ul>
           </div>
           <div>
@@ -35,7 +34,6 @@ const Footer = () => {
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li><Link to="/login" className="hover:text-foreground transition-colors">Log In</Link></li>
               <li><Link to="/signup" className="hover:text-foreground transition-colors">Sign Up</Link></li>
-              <li><a href="#" className="hover:text-foreground transition-colors">API Documentation</a></li>
             </ul>
           </div>
         </div>
