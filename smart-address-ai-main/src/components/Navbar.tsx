@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/react";
 import { NavbarSignedInSection } from "@/components/NavbarSignedInSection";
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/Logo";
+import { OrganizationInviteBanner } from "@/components/OrganizationInviteBanner";
 import { Menu, X } from "lucide-react";
 
 const NAV_LINKS = [
@@ -109,6 +110,8 @@ const Navbar = () => {
           </button>
         </div>
       </div>
+
+      <OrganizationInviteBanner />
 
       {mobileOpen && (
         <div className="md:hidden glass border-b border-border/50 px-4 py-4 space-y-3">
