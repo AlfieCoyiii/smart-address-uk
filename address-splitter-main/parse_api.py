@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 from contextlib import asynccontextmanager
+import logging
 import secrets
 from typing import Annotated
 
@@ -82,9 +83,20 @@ def load_crf_model():
     return crf_model
 
 
+def _configure_production_logging() -> None:
+    """
+    Keep dependency loggers quiet so they never echo HTTP traffic or payloads to stdout
+    (Render and similar hosts capture stdout/stderr as 'logs').
+    Uvicorn access lines are method + path + status only — they do not include JSON bodies.
+    """
+    for name in ("httpx", "httpcore", "urllib3", "hpack", "http11"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global stripe_secret_key
+    _configure_production_logging()
     # Load Stripe key from .env in this directory (runs after app is ready)
     env_path = os.path.join(BASE_DIR, ".env")
     load_dotenv(env_path)
@@ -372,6 +384,7 @@ def _reject_too_many_skipped(addresses: list[str]) -> None:
 @app.post("/parse", response_model=ParseResponse)
 def parse_addresses(body: ParseRequest, request: Request):
     """Parse UK addresses. Credits only for lines sent to the parser; failed splits are refunded."""
+    # Never log body.addresses or raw request JSON — appears in host logs (stdout/stderr).
     addresses = [a.strip() for a in body.addresses if a.strip()]
     if not addresses:
         raise HTTPException(status_code=400, detail="No addresses provided.")

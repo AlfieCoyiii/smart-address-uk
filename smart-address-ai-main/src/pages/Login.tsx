@@ -45,6 +45,17 @@ const Login = () => {
               fallback={<p className="text-sm text-muted-foreground">Loading sign-in…</p>}
             />
           </div>
+          <p className="max-w-md text-center text-xs text-muted-foreground leading-relaxed px-2">
+            By continuing, you agree to our{" "}
+            <Link to="/terms" className="text-primary hover:underline">
+              Terms of Service
+            </Link>{" "}
+            and{" "}
+            <Link to="/privacy" className="text-primary hover:underline">
+              Privacy Policy
+            </Link>
+            .
+          </p>
           <Link to="/" className="text-sm text-muted-foreground hover:text-foreground">
             ← Back to home
           </Link>

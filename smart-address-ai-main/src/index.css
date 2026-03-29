@@ -129,24 +129,31 @@
   --clerk-color-text: #ffffff !important;
   --clerk-color-text-secondary: #ffffff !important;
 }
-/* Target text in Clerk (UserButton dropdown, modals) so labels and options are white */
+/*
+ * Target typography in Clerk (UserButton, modals) — white on dark.
+ * Do NOT force color on every div or use * — Clerk email/OTP verification uses nested divs,
+ * transparent text, and caret layering; forcing white on * breaks one or more digit cells.
+ */
 .cl-rootBox span,
 .cl-rootBox p,
 .cl-rootBox label,
 .cl-rootBox a,
 .cl-rootBox button,
-.cl-rootBox div,
 [class*="cl-"] span,
 [class*="cl-"] p,
 [class*="cl-"] label,
 [class*="cl-"] a,
-[class*="cl-"] button,
-[class*="cl-"] div {
+[class*="cl-"] button {
   color: #ffffff !important;
 }
-/* Catch-all: any text inside Clerk components stays white for contrast */
-.cl-rootBox *,
-[data-clerk-component] * {
+/* Menu / list items are often divs with roles — keep readable without styling every div */
+.cl-rootBox [role="menuitem"],
+.cl-rootBox [role="option"],
+.cl-rootBox [role="tab"],
+.cl-rootBox [role="menuitem"] *,
+[data-clerk-component] [role="menuitem"],
+[data-clerk-component] [role="option"],
+[data-clerk-component] [role="tab"] {
   color: #ffffff !important;
 }
 

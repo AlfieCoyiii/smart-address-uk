@@ -105,6 +105,16 @@ Rules:
 
 **Test (optional):** open `https://YOUR-API.onrender.com/health` in a browser — should return JSON, not 404.
 
+### 1.5 Logs and customer address data
+
+- Render’s **HTTP request logs** (Professional workspaces) record things like **method, path, status, and request ID** — **not** the JSON body. See [Render logging docs](https://render.com/docs/logging#http-request-logs).
+- **Uvicorn access lines** are also only `POST /parse 200` style — **no** payload.
+- If you still see **address text** in the log explorer **message** column, it is almost always **application `stdout` / `stderr`** (e.g. a stray `print()`, debug middleware, or a log forwarder configured to capture bodies). This repo’s `parse_api` does **not** log request bodies; keep it that way.
+- Optional env: avoid `LOG_LEVEL=debug` on the API in production unless you need it briefly.
+- If you **stream logs** to Datadog / Splunk / etc., check that integration is **not** set to record full HTTP bodies.
+
+**Checklist:** see repo root `COMPLIANCE_CHECKLIST.md` and `DATA_PROCESSING_MAP.md` for an internal status/data map.
+
 ---
 
 ## Part 2 — Render: create the **website** (Static Site)

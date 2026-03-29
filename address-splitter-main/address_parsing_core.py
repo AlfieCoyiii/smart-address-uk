@@ -4,7 +4,17 @@ import pickle
 import json
 from rapidfuzz import process, fuzz
 import os
+
 BASE_DIR = os.path.dirname(__file__)
+
+
+def _parse_debug_log(message: str) -> None:
+    """
+    Parser trace logs include customer address text. Off by default so host logs (e.g. Render)
+    do not retain payloads. Set ADDRESS_PARSE_DEBUG=1 locally when debugging parsing only.
+    """
+    if os.environ.get("ADDRESS_PARSE_DEBUG", "").strip().lower() in ("1", "true", "yes"):
+        print(message, flush=True)
 
 # ===================== AUTOCORRECT THRESHOLDS (ADJUST HERE) =====================
 TOWN_AUTOCORRECT_THRESHOLD = 0.95
@@ -239,7 +249,7 @@ def find_country(words, country_list):
             candidate = ' '.join(words[-length:]).title().strip()
             for country in country_list:
                 if normalize_name(candidate) == normalize_name(country):
-                    print(f"DEBUG: Found country: {country}")
+                    _parse_debug_log(f"DEBUG: Found country: {country}")
                     return country, (len(words) - length, len(words))
     return '', None
 
@@ -252,7 +262,7 @@ def find_traditional_county(words, tsc_list, exclude_spans=None):
             candidate = ' '.join(filtered_words[-length:]).title().strip()
             for tsc in tsc_list:
                 if normalize_name(candidate) == normalize_name(tsc):
-                    print(f"DEBUG: Found traditional county: {tsc}")
+                    _parse_debug_log(f"DEBUG: Found traditional county: {tsc}")
                     # Map back to original indices
                     start = len(words) - len(filtered_words) + (len(filtered_words) - length)
                     end = start + length
@@ -268,7 +278,7 @@ def find_county(words, county_list, exclude_spans=None):
             candidate = ' '.join(filtered_words[-length:]).title().strip()
             for county in county_list:
                 if normalize_name(candidate) == normalize_name(county):
-                    print(f"DEBUG: Found county: {county}")
+                    _parse_debug_log(f"DEBUG: Found county: {county}")
                     # Map back to original indices
                     start = len(words) - len(filtered_words) + (len(filtered_words) - length)
                     end = start + length
@@ -333,21 +343,21 @@ def parse_address_multi(addresses, progress_callback=None, allow_autocorrect_lis
 
     def find_town(words, start_idx):
         max_check = min(5, start_idx)
-        print(f"DEBUG find_town: words={words}, start_idx={start_idx}, max_check={max_check}")
+        _parse_debug_log(f"DEBUG find_town: words={words}, start_idx={start_idx}, max_check={max_check}")
 
         for length in range(max_check, 0, -1):
             phrase_words = words[start_idx - length : start_idx]
             candidate_phrase = ' '.join(phrase_words).title().strip()
             normalized_candidate = normalize_name(candidate_phrase)
-            print(f"DEBUG find_town: checking length={length}, phrase_words={phrase_words}, candidate_phrase='{candidate_phrase}', normalized='{normalized_candidate}'")
+            _parse_debug_log(f"DEBUG find_town: checking length={length}, phrase_words={phrase_words}, candidate_phrase='{candidate_phrase}', normalized='{normalized_candidate}'")
 
             # O(1) lookup
             if normalized_candidate in formatted_place_names:
-                print(f"DEBUG find_town: MATCH FOUND! normalized_candidate='{normalized_candidate}' in formatted_place_names")
+                _parse_debug_log(f"DEBUG find_town: MATCH FOUND! normalized_candidate='{normalized_candidate}' in formatted_place_names")
                 if length == 1 and normalized_candidate in excluded_town_names:
-                    print(f"DEBUG find_town: but skipping because it's in excluded_town_names")
+                    _parse_debug_log(f"DEBUG find_town: but skipping because it's in excluded_town_names")
                     continue
-                print(f"DEBUG find_town: returning '{formatted_place_names[normalized_candidate]}'")
+                _parse_debug_log(f"DEBUG find_town: returning '{formatted_place_names[normalized_candidate]}'")
                 return formatted_place_names[normalized_candidate]
 
             # Try candidate + suffixes (space and hyphen)
@@ -432,7 +442,7 @@ def parse_address_multi(addresses, progress_callback=None, allow_autocorrect_lis
 
                 # Remove postcode from the end if present
                 if words and re.fullmatch(postcode_pattern, words[-1], re.IGNORECASE):
-                    print(f"DEBUG: Removing postcode from words: {words[-1]}")
+                    _parse_debug_log(f"DEBUG: Removing postcode from words: {words[-1]}")
                     words = words[:-1]
 
                 # Country detection (last 3, 2, 1 words)
@@ -443,7 +453,7 @@ def parse_address_multi(addresses, progress_callback=None, allow_autocorrect_lis
                         for c in countries:
                             if normalize_name(candidate) == normalize_name(c):
                                 country = c
-                                print(f"DEBUG: Found country: {country}")
+                                _parse_debug_log(f"DEBUG: Found country: {country}")
                                 words = words[:-length]
                                 break
                         if country:
@@ -454,13 +464,13 @@ def parse_address_multi(addresses, progress_callback=None, allow_autocorrect_lis
                 for length in range(2, 0, -1):
                     if len(words) >= length:
                         candidate = ' '.join(words[-length:]).title().strip()
-                        print(f"DEBUG tsc: checking length={length}, candidate='{candidate}'")
+                        _parse_debug_log(f"DEBUG tsc: checking length={length}, candidate='{candidate}'")
                         
                         # First try exact match
                         for tsc in traditional_scottish_counties:
                             if normalize_name(candidate) == normalize_name(tsc):
                                 ts_county = tsc
-                                print(f"DEBUG: Found traditional county: {ts_county}")
+                                _parse_debug_log(f"DEBUG: Found traditional county: {ts_county}")
                                 words = words[:-length]
                                 break
                         
@@ -470,14 +480,14 @@ def parse_address_multi(addresses, progress_callback=None, allow_autocorrect_lis
                             remaining_words = words[-(length-1):]
                             remaining_candidate = ' '.join(remaining_words).title().strip()
                             
-                            print(f"DEBUG tsc: trying directional+county: first_word='{first_word}', remaining='{remaining_candidate}'")
+                            _parse_debug_log(f"DEBUG tsc: trying directional+county: first_word='{first_word}', remaining='{remaining_candidate}'")
                             
                             # Check if first word is directional and remaining is traditional Scottish county
                             if first_word in directionals:
                                 for tsc in traditional_scottish_counties:
                                     if normalize_name(remaining_candidate) == normalize_name(tsc):
                                         ts_county = tsc
-                                        print(f"DEBUG: Found traditional county with directional: {first_word} {remaining_candidate} -> {ts_county}")
+                                        _parse_debug_log(f"DEBUG: Found traditional county with directional: {first_word} {remaining_candidate} -> {ts_county}")
                                         words = words[:-length]
                                         break
                         
@@ -488,27 +498,27 @@ def parse_address_multi(addresses, progress_callback=None, allow_autocorrect_lis
                 # County detection (last 3, 2, 1 words) with directional support
                 county = ''
                 county_removed_length = 0  # Track how many words were removed for the county
-                print(f"DEBUG county: words before county detection: {words}")
+                _parse_debug_log(f"DEBUG county: words before county detection: {words}")
                 for length in range(3, 0, -1):
                     if len(words) >= length:
                         candidate = ' '.join(words[-length:]).title().strip()
-                        print(f"DEBUG county: checking length={length}, candidate='{candidate}'")
+                        _parse_debug_log(f"DEBUG county: checking length={length}, candidate='{candidate}'")
                         
                         # First try exact match
                         for c in counties:
                             if normalize_name(candidate) == normalize_name(c):
-                                print(f"DEBUG county: EXACT MATCH! '{candidate}' matches county '{c}'")
+                                _parse_debug_log(f"DEBUG county: EXACT MATCH! '{candidate}' matches county '{c}'")
                                 county = c
                                 county_removed_length = length
-                                print(f"DEBUG county: words before removal: {words}")
+                                _parse_debug_log(f"DEBUG county: words before removal: {words}")
                                 words = words[:-length]
-                                print(f"DEBUG county: words after county removal: {words}")
+                                _parse_debug_log(f"DEBUG county: words after county removal: {words}")
                                 
                                 # Check if the word before the county was "Co." or "County" and remove it too
                                 if len(words) > 0 and words[-1].lower() in ['co.', 'co', 'county']:
-                                    print(f"DEBUG county: removing 'Co.' prefix: '{words[-1]}'")
+                                    _parse_debug_log(f"DEBUG county: removing 'Co.' prefix: '{words[-1]}'")
                                     words = words[:-1]
-                                    print(f"DEBUG county: words after 'Co.' removal: {words}")
+                                    _parse_debug_log(f"DEBUG county: words after 'Co.' removal: {words}")
                                 
                                 break
                         
@@ -518,24 +528,24 @@ def parse_address_multi(addresses, progress_callback=None, allow_autocorrect_lis
                             remaining_words = words[-(length-1):]
                             remaining_candidate = ' '.join(remaining_words).title().strip()
                             
-                            print(f"DEBUG county: trying directional+county: first_word='{first_word}', remaining='{remaining_candidate}'")
+                            _parse_debug_log(f"DEBUG county: trying directional+county: first_word='{first_word}', remaining='{remaining_candidate}'")
                             
                             # Check if first word is directional and remaining is county
                             if first_word in directionals:
                                 for c in counties:
                                     if normalize_name(remaining_candidate) == normalize_name(c):
-                                        print(f"DEBUG county: DIRECTIONAL MATCH! '{first_word} {remaining_candidate}' -> county '{c}'")
+                                        _parse_debug_log(f"DEBUG county: DIRECTIONAL MATCH! '{first_word} {remaining_candidate}' -> county '{c}'")
                                         county = c
                                         county_removed_length = length  # Track that we removed directional + county
-                                        print(f"DEBUG county: words before removal: {words}")
+                                        _parse_debug_log(f"DEBUG county: words before removal: {words}")
                                         words = words[:-length]
-                                        print(f"DEBUG county: words after county removal: {words}")
+                                        _parse_debug_log(f"DEBUG county: words after county removal: {words}")
                                         
                                         # Check if the word before the county was "Co." or "County" and remove it too
                                         if len(words) > 0 and words[-1].lower() in ['co.', 'co', 'county']:
-                                            print(f"DEBUG county: removing 'Co.' prefix: '{words[-1]}'")
+                                            _parse_debug_log(f"DEBUG county: removing 'Co.' prefix: '{words[-1]}'")
                                             words = words[:-1]
-                                            print(f"DEBUG county: words after 'Co.' removal: {words}")
+                                            _parse_debug_log(f"DEBUG county: words after 'Co.' removal: {words}")
                                         
                                         break
                         
@@ -544,13 +554,13 @@ def parse_address_multi(addresses, progress_callback=None, allow_autocorrect_lis
                 
                 # Check for back-to-back duplicate counties (e.g., "Hertfordshire Hertfordshire" or "East Hertfordshire East Hertfordshire")
                 if county and county_removed_length > 0:
-                    print(f"DEBUG duplicate county: county='{county}', removed_length={county_removed_length}, words={words}")
+                    _parse_debug_log(f"DEBUG duplicate county: county='{county}', removed_length={county_removed_length}, words={words}")
                     
                     # Check if the same number of words at the end match the base county (with or without directional)
                     if len(words) >= county_removed_length:
                         last_n_words = words[-county_removed_length:]
                         candidate = ' '.join(last_n_words).title().strip()
-                        print(f"DEBUG duplicate county: checking if '{candidate}' forms same county pattern")
+                        _parse_debug_log(f"DEBUG duplicate county: checking if '{candidate}' forms same county pattern")
                         
                         # Case 1: If removed_length > 1, check if it's directional + county
                         if county_removed_length > 1:
@@ -560,15 +570,15 @@ def parse_address_multi(addresses, progress_callback=None, allow_autocorrect_lis
                             
                             # Check if this is also directional + same county
                             if first_word in directionals and normalize_name(remaining) == normalize_name(county):
-                                print(f"DEBUG duplicate county: FOUND back-to-back duplicate with directional! '{first_word} {remaining}'")
+                                _parse_debug_log(f"DEBUG duplicate county: FOUND back-to-back duplicate with directional! '{first_word} {remaining}'")
                                 words = words[:-county_removed_length]
-                                print(f"DEBUG duplicate county: words after duplicate removal: {words}")
+                                _parse_debug_log(f"DEBUG duplicate county: words after duplicate removal: {words}")
                         
                         # Case 2: Check if it's just the county name (exact match)
                         if normalize_name(candidate) == normalize_name(county):
-                            print(f"DEBUG duplicate county: FOUND back-to-back duplicate! Removing '{candidate}'")
+                            _parse_debug_log(f"DEBUG duplicate county: FOUND back-to-back duplicate! Removing '{candidate}'")
                             words = words[:-county_removed_length]
-                            print(f"DEBUG duplicate county: words after duplicate removal: {words}")
+                            _parse_debug_log(f"DEBUG duplicate county: words after duplicate removal: {words}")
                 
                 # If no county found with exact match, try autocorrect
                 if not county and allow_autocorrect:
@@ -598,36 +608,36 @@ def parse_address_multi(addresses, progress_callback=None, allow_autocorrect_lis
 
                 # After all country, tsc, and county removals, before town detection:
                 start_idx = len(words)
-                print(f"DEBUG: start_idx for town detection: {start_idx}")
-                print(f"DEBUG: words before town detection: {words}")
-                print(f"DEBUG: length of words: {len(words)}")
+                _parse_debug_log(f"DEBUG: start_idx for town detection: {start_idx}")
+                _parse_debug_log(f"DEBUG: words before town detection: {words}")
+                _parse_debug_log(f"DEBUG: length of words: {len(words)}")
                 
                 # Debug: Check if any words contain town names
                 for i, word in enumerate(words):
                     if normalize_name(word) in normalized_places:
-                        print(f"DEBUG: Word {i} '{word}' is a town name!")
+                        _parse_debug_log(f"DEBUG: Word {i} '{word}' is a town name!")
                 
                 # First pass: Try to find town normally (including directionals in case there's a town like "Hertford East")
                 town = find_town(words, start_idx)
-                print(f"DEBUG: town found by find_town (first pass): '{town}'")
+                _parse_debug_log(f"DEBUG: town found by find_town (first pass): '{town}'")
                 
                 # Second pass: If no town found, check if last 1-2 words are directionals
                 # If so, temporarily ignore them and try town detection again
                 directionals_to_remove = []
                 if town == "":
-                    print(f"DEBUG directional town: No town found, checking for trailing directionals")
+                    _parse_debug_log(f"DEBUG directional town: No town found, checking for trailing directionals")
                     
                     # Check if last 2 words are directionals (e.g., "North East")
                     if len(words) >= 2:
                         last_two = ' '.join(words[-2:]).title().strip()
                         if last_two in directionals:
-                            print(f"DEBUG directional town: Last 2 words '{last_two}' are directional")
+                            _parse_debug_log(f"DEBUG directional town: Last 2 words '{last_two}' are directional")
                             directionals_to_remove = words[-2:]
                             temp_words = words[:-2]
                             temp_start_idx = len(temp_words)
                             town = find_town(temp_words, temp_start_idx)
                             if town != "":
-                                print(f"DEBUG directional town: Found town '{town}' after ignoring directionals '{last_two}'")
+                                _parse_debug_log(f"DEBUG directional town: Found town '{town}' after ignoring directionals '{last_two}'")
                                 words = temp_words  # Remove the directionals
                                 start_idx = temp_start_idx
                             else:
@@ -637,23 +647,23 @@ def parse_address_multi(addresses, progress_callback=None, allow_autocorrect_lis
                     if town == "" and len(words) >= 1:
                         last_one = words[-1].title().strip()
                         if last_one in directionals:
-                            print(f"DEBUG directional town: Last word '{last_one}' is directional")
+                            _parse_debug_log(f"DEBUG directional town: Last word '{last_one}' is directional")
                             directionals_to_remove = [words[-1]]
                             temp_words = words[:-1]
                             temp_start_idx = len(temp_words)
                             town = find_town(temp_words, temp_start_idx)
                             if town != "":
-                                print(f"DEBUG directional town: Found town '{town}' after ignoring directional '{last_one}'")
+                                _parse_debug_log(f"DEBUG directional town: Found town '{town}' after ignoring directional '{last_one}'")
                                 words = temp_words  # Remove the directional
                                 start_idx = temp_start_idx
                             else:
                                 directionals_to_remove = []  # Keep it if no town found
                 
-                print(f"DEBUG: town found by find_town (after directional check): '{town}'")
+                _parse_debug_log(f"DEBUG: town found by find_town (after directional check): '{town}'")
                 
                 # Debug: Check what words remain after town detection
-                print(f"DEBUG: words after town detection: {words}")
-                print(f"DEBUG: start_idx after town detection: {start_idx}")
+                _parse_debug_log(f"DEBUG: words after town detection: {words}")
+                _parse_debug_log(f"DEBUG: start_idx after town detection: {start_idx}")
                 
                 if town != "":
                     town_count += 1
@@ -734,16 +744,16 @@ def parse_address_multi(addresses, progress_callback=None, allow_autocorrect_lis
         
         # Always try to extract REST output, even if town or postcode not found
         rest = cleaned.strip()
-        print(f"DEBUG rest: initial cleaned='{cleaned}'")
-        print(f"DEBUG rest: initial rest='{rest}'")
+        _parse_debug_log(f"DEBUG rest: initial cleaned='{cleaned}'")
+        _parse_debug_log(f"DEBUG rest: initial rest='{rest}'")
         spans = []
         
         if town:
             town_idx = cleaned.lower().find(town.lower())
-            print(f"DEBUG rest: town='{town}', town_idx={town_idx}")
+            _parse_debug_log(f"DEBUG rest: town='{town}', town_idx={town_idx}")
             if town_idx != -1:
                 rest = cleaned[:town_idx].strip()
-                print(f"DEBUG rest: after removing town, rest='{rest}'")
+                _parse_debug_log(f"DEBUG rest: after removing town, rest='{rest}'")
         
         # After extracting the town, instead of '.replace', use this helper:
         def remove_trailing_town(text, town):
@@ -754,7 +764,7 @@ def parse_address_multi(addresses, progress_callback=None, allow_autocorrect_lis
                 return match.group(1).strip()
             return text
         rest = remove_trailing_town(cleaned, town)
-        print(f"DEBUG rest: after removing trailing town, rest='{rest}'")
+        _parse_debug_log(f"DEBUG rest: after removing trailing town, rest='{rest}'")
         
         # Town spans
         # REMOVE: town_spans = detect_town_spans(rest, place_names)
@@ -762,7 +772,7 @@ def parse_address_multi(addresses, progress_callback=None, allow_autocorrect_lis
         # REMOVE: street_spans = detect_street_spans(rest, valid_street_names)
         # spans = town_spans + street_spans
         
-        print(f"DEBUG rest: FINAL rest for CRF='{rest}'")
+        _parse_debug_log(f"DEBUG rest: FINAL rest for CRF='{rest}'")
         rest_outputs.append(rest)
         # REMOVE: town_spans_outputs.append({
         # REMOVE:     'pre_address': rest,

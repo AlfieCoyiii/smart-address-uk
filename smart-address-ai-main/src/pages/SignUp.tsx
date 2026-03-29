@@ -40,6 +40,17 @@ const SignUp = () => {
               fallback={<p className="text-sm text-muted-foreground">Loading sign-up…</p>}
             />
           </div>
+          <p className="max-w-md text-center text-xs text-muted-foreground leading-relaxed px-2 -mt-4">
+            By creating an account, you agree to our{" "}
+            <Link to="/terms" className="text-primary hover:underline">
+              Terms of Service
+            </Link>{" "}
+            and{" "}
+            <Link to="/privacy" className="text-primary hover:underline">
+              Privacy Policy
+            </Link>
+            .
+          </p>
           <p className="text-sm text-muted-foreground">
             Already have an account?{" "}
             <Link to="/sign-in" className="text-primary hover:text-primary/80 font-medium">

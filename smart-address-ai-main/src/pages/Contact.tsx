@@ -2,8 +2,9 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { motion } from "framer-motion";
 import { Mail } from "lucide-react";
+import { LEGAL_ENTITY } from "@/lib/legalEntity";
 
-const CONTACT_EMAIL = "help@smartaddress.uk";
+const CONTACT_EMAIL = LEGAL_ENTITY.contactEmail;
 
 const Contact = () => {
   return (
