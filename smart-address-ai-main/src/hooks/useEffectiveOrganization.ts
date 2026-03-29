@@ -16,7 +16,7 @@ export function useEffectiveOrganization(): {
   /** True if ensure-workspace failed (show retry UI) */
   provisionError: boolean;
 } {
-  const { isSignedIn, getToken, isLoaded: authLoaded } = useAuth();
+  const { isSignedIn, getToken, isLoaded: authLoaded, orgId: activeOrgId } = useAuth();
   const { isLoaded: orgListLoaded, userMemberships, setActive } = useOrganizationList({
     userMemberships: true,
   });
@@ -29,6 +29,9 @@ export function useEffectiveOrganization(): {
   const organization = first?.organization
     ? { id: first.organization.id, name: first.organization.name }
     : null;
+
+  /** Stable primitive — avoids re-running the effect when Clerk replaces `userMemberships` by reference each render. */
+  const primaryMembershipOrgId = first?.organization?.id ?? null;
 
   const fullyLoaded = Boolean(authLoaded && orgListLoaded);
 
@@ -43,9 +46,13 @@ export function useEffectiveOrganization(): {
     if (!orgListLoaded) return;
 
     const run = async () => {
-      const oid = userMemberships?.data?.[0]?.organization?.id;
+      const oid = primaryMembershipOrgId;
       if (oid) {
         setProvisionError(false);
+        // setActive triggers session `touch` on every call — rate-limits (429) if this effect re-runs in a loop.
+        if (activeOrgId === oid) {
+          return;
+        }
         try {
           if (setActive) await setActive({ organization: oid });
         } catch {
@@ -66,7 +73,7 @@ export function useEffectiveOrganization(): {
           return;
         }
         const r = await ensureWorkspaceApi({ token });
-        if (r.org_id && setActive) {
+        if (r.org_id && setActive && activeOrgId !== r.org_id) {
           await setActive({ organization: r.org_id });
         }
         await userMemberships?.revalidate?.();
@@ -81,7 +88,16 @@ export function useEffectiveOrganization(): {
     };
 
     void run();
-  }, [authLoaded, isSignedIn, orgListLoaded, userMemberships?.data?.length, getToken, setActive, userMemberships]);
+  }, [
+    authLoaded,
+    isSignedIn,
+    orgListLoaded,
+    primaryMembershipOrgId,
+    activeOrgId,
+    getToken,
+    setActive,
+    userMemberships?.revalidate,
+  ]);
 
   return { organization, isLoaded: fullyLoaded, isProvisioning, provisionError };
 }
