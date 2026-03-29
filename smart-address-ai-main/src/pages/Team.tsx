@@ -63,6 +63,16 @@ function memberDisplayName(m: Pick<TeamMember, "first_name" | "last_name" | "ema
   return `${m.user_id.slice(0, 12)}…`;
 }
 
+/** e.g. org:admin → Admin, org:member → Member */
+function formatMemberRole(role: string): string {
+  const key = role.replace(/^org:/i, "").trim().replace(/_/g, " ");
+  if (!key) return role;
+  return key
+    .split(/\s+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
 const Team = () => {
   const { getToken, isSignedIn } = useAuth();
   const location = useLocation();
@@ -260,18 +270,20 @@ const Team = () => {
     const nextHome = pickOldestMembership(
       clerkMemberships.filter((m) => m.organization.id !== organization.id),
     );
+    if (!nextHome) {
+      toast.error("No other workspace to switch to. Refresh the page if you just joined another team.");
+      setLeaveDialogOpen(false);
+      return;
+    }
     setLeaveLoading(true);
     try {
-      await user.leaveOrganization(organization.id);
-      await userMemberships?.revalidate?.();
-      if (nextHome && setActive) {
+      // With "Membership required", Clerk often rejects leaving the *active* org first. Switch workspace, then leave.
+      if (setActive) {
         await setActive({ organization: nextHome.organization.id });
       }
-      toast.success(
-        nextHome
-          ? `Switched to ${nextHome.organization.name}. Usage and billing follow that workspace now.`
-          : "Left workspace.",
-      );
+      await user.leaveOrganization(organization.id);
+      await userMemberships?.revalidate?.();
+      toast.success(`Switched to ${nextHome.organization.name}. Usage and billing follow that workspace now.`);
       requestUsageRefresh();
       setLeaveDialogOpen(false);
       navigate("/team", { replace: true });
@@ -599,7 +611,6 @@ const Team = () => {
                         <tr className="border-b border-border">
                           <th className="text-left py-4 pr-6 font-medium">Member</th>
                           <th className="text-left py-4 pr-6 font-medium">Role</th>
-                          <th className="text-right py-4 pl-6 font-medium">Credits used</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -608,8 +619,7 @@ const Team = () => {
                             <td className="py-4 pr-6 align-middle">
                               {memberDisplayName(m)}
                             </td>
-                            <td className="py-4 pr-6 align-middle">{m.role.replace("org:", "")}</td>
-                            <td className="py-4 pl-6 text-right align-middle">{m.tokens_used.toLocaleString()}</td>
+                            <td className="py-4 pr-6 align-middle">{formatMemberRole(m.role)}</td>
                           </tr>
                         ))}
                       </tbody>
