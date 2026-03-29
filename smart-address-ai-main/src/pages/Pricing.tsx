@@ -236,14 +236,6 @@ const Pricing = () => {
             <p className="mt-2 text-sm text-muted-foreground max-w-lg mx-auto">
               We parse and split; we don't validate. <Link to="/how-it-works" className="text-primary hover:underline">How it works</Link>
             </p>
-            {organization && (
-              <p className="mt-2 text-sm text-muted-foreground">
-                Workspace: <span className="text-foreground font-medium">{organization.name}</span> — rename anytime on{" "}
-                <Link to="/team" className="text-primary hover:underline">
-                  Team
-                </Link>
-              </p>
-            )}
           </motion.div>
 
           {stripeBackend?.api_key_mode === "test" && stripeBackend.stripe_configured && (
