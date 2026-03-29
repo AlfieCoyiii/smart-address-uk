@@ -4,7 +4,7 @@ import { UserButton, useAuth } from "@clerk/react";
 import { useEffectiveOrganization } from "@/hooks/useEffectiveOrganization";
 import { fetchUsage } from "@/lib/addressApi";
 import { USAGE_REFRESH_EVENT } from "@/lib/usageEvents";
-import { computeCreditsRemaining, creditsRemainingTitle } from "@/lib/usageCredits";
+import { navbarUsageSummary } from "@/lib/usageCredits";
 
 /**
  * Mounted only inside `<Show when="signed-in">` so org hooks never run while signed out.
@@ -66,12 +66,10 @@ export function NavbarSignedInSection({
     return (
       <div className="flex flex-col gap-3 pt-2">
         {usage && (() => {
-          const c = computeCreditsRemaining(usage);
+          const { line, title } = navbarUsageSummary(usage);
           return (
-            <span className="text-sm text-muted-foreground tabular-nums py-1" title={creditsRemainingTitle(c)}>
-              {c.isFree || !c.paidOverageUnlimited
-                ? `${c.totalLeft.toLocaleString()} credits left`
-                : `${c.includedLeft.toLocaleString()} incl. · overage open`}
+            <span className="text-sm text-muted-foreground tabular-nums py-1" title={title}>
+              {line}
             </span>
           );
         })()}
@@ -92,17 +90,13 @@ export function NavbarSignedInSection({
   return (
     <>
       {usage && (() => {
-        const c = computeCreditsRemaining(usage);
-        const label =
-          c.isFree || !c.paidOverageUnlimited
-            ? `${c.totalLeft.toLocaleString()} left`
-            : `${c.includedLeft.toLocaleString()} incl. · overage open`;
+        const { line, title } = navbarUsageSummary(usage);
         return (
           <span
-            className="text-sm text-muted-foreground tabular-nums hidden md:inline max-w-[200px] truncate"
-            title={creditsRemainingTitle(c)}
+            className="text-sm text-muted-foreground tabular-nums hidden md:inline max-w-[min(280px,40vw)] truncate whitespace-nowrap"
+            title={title}
           >
-            {label}
+            {line}
           </span>
         );
       })()}

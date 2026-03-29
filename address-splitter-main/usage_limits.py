@@ -75,6 +75,23 @@ def _init_db():
                     PRIMARY KEY (org_id, user_id, period)
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS admin_audit_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    usage_key TEXT NOT NULL,
+                    period TEXT NOT NULL,
+                    before_tokens INTEGER NOT NULL,
+                    before_overage INTEGER NOT NULL,
+                    after_tokens INTEGER NOT NULL,
+                    after_overage INTEGER NOT NULL,
+                    reduce_tokens INTEGER NOT NULL,
+                    reduce_overage INTEGER NOT NULL,
+                    member_user_id TEXT NULL,
+                    reason TEXT NOT NULL
+                )
+            """)
             conn.commit()
         finally:
             conn.close()
@@ -572,6 +589,218 @@ def refund_tokens_paid(org_id: str, refund: int, user_id: str | None = None) -> 
             conn.commit()
         finally:
             conn.close()
+
+
+# -------- Support: audited goodwill (reduce recorded usage) --------
+def _validate_usage_key(usage_key: str) -> str:
+    k = (usage_key or "").strip()
+    if not k or " " in k:
+        raise ValueError("Invalid usage_key.")
+    if not (k.startswith("org:") or k.startswith("user:")):
+        raise ValueError("usage_key must start with org: or user: (e.g. org:org_2abc…).")
+    return k
+
+
+def _validate_period(period: str) -> str:
+    p = (period or "").strip()
+    if len(p) != 7 or p[4] != "-":
+        raise ValueError("period must be YYYY-MM (UTC calendar month).")
+    y, m = p[:4], p[5:7]
+    if not y.isdigit() or not m.isdigit() or not (1 <= int(m) <= 12):
+        raise ValueError("period must be YYYY-MM (UTC calendar month).")
+    return p
+
+
+def admin_list_usage_for_period(period: str, *, limit: int = 200, offset: int = 0) -> list[dict]:
+    """Rows from usage for support review (newest keys first within page)."""
+    _init_db()
+    p = _validate_period(period)
+    lim = max(1, min(limit, 500))
+    off = max(0, offset)
+    with _db_lock:
+        conn = _get_conn()
+        try:
+            rows = conn.execute(
+                """
+                SELECT key, period, tokens_used, overage_used
+                FROM usage
+                WHERE period = ?
+                ORDER BY key ASC
+                LIMIT ? OFFSET ?
+                """,
+                (p, lim, off),
+            ).fetchall()
+            return [
+                {
+                    "key": r["key"],
+                    "period": r["period"],
+                    "tokens_used": int(r["tokens_used"]),
+                    "overage_used": int(r["overage_used"]),
+                }
+                for r in rows
+            ]
+        finally:
+            conn.close()
+
+
+def admin_get_usage_row(usage_key: str, period: str) -> dict | None:
+    _init_db()
+    k = _validate_usage_key(usage_key)
+    p = _validate_period(period)
+    with _db_lock:
+        conn = _get_conn()
+        try:
+            row = conn.execute(
+                "SELECT key, period, tokens_used, overage_used FROM usage WHERE key = ? AND period = ?",
+                (k, p),
+            ).fetchone()
+            if not row:
+                return None
+            return {
+                "key": row["key"],
+                "period": row["period"],
+                "tokens_used": int(row["tokens_used"]),
+                "overage_used": int(row["overage_used"]),
+            }
+        finally:
+            conn.close()
+
+
+def admin_list_audit(*, limit: int = 100, offset: int = 0) -> list[dict]:
+    _init_db()
+    lim = max(1, min(limit, 200))
+    off = max(0, offset)
+    with _db_lock:
+        conn = _get_conn()
+        try:
+            rows = conn.execute(
+                """
+                SELECT id, created_at, action, usage_key, period,
+                       before_tokens, before_overage, after_tokens, after_overage,
+                       reduce_tokens, reduce_overage, member_user_id, reason
+                FROM admin_audit_log
+                ORDER BY id DESC
+                LIMIT ? OFFSET ?
+                """,
+                (lim, off),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+
+def admin_grant_goodwill(
+    usage_key: str,
+    period: str,
+    reduce_tokens_used_by: int,
+    reduce_overage_used_by: int,
+    reason: str,
+    *,
+    member_user_id: str | None = None,
+) -> dict:
+    """
+    Reduce recorded usage for customer service (same effect as refunding N addresses).
+    At least one reduction must be > 0. Writes admin_audit_log.
+    """
+    _init_db()
+    k = _validate_usage_key(usage_key)
+    p = _validate_period(period)
+    rt = int(reduce_tokens_used_by)
+    ro = int(reduce_overage_used_by)
+    rsn = (reason or "").strip()
+    if rt < 0 or ro < 0:
+        raise ValueError("Reduction amounts must be non-negative.")
+    if rt == 0 and ro == 0:
+        raise ValueError("Specify reduce_tokens_used_by and/or reduce_overage_used_by > 0.")
+    if len(rsn) < 4:
+        raise ValueError("reason must be at least 4 characters (support ticket / note).")
+
+    mem = (member_user_id or "").strip() or None
+    if mem and not k.startswith("org:"):
+        raise ValueError("member_user_id is only valid with an org: usage_key.")
+
+    created = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    with _db_lock:
+        conn = _get_conn()
+        try:
+            row = conn.execute(
+                "SELECT tokens_used, overage_used FROM usage WHERE key = ? AND period = ?",
+                (k, p),
+            ).fetchone()
+            before_t = int(row["tokens_used"]) if row else 0
+            before_o = int(row["overage_used"]) if row else 0
+
+            dec_t = min(rt, before_t)
+            dec_o = min(ro, before_o)
+            after_t = before_t - dec_t
+            after_o = before_o - dec_o
+
+            conn.execute(
+                """
+                INSERT INTO usage (key, period, tokens_used, overage_used)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(key, period) DO UPDATE SET
+                    tokens_used = excluded.tokens_used,
+                    overage_used = excluded.overage_used
+                """,
+                (k, p, after_t, after_o),
+            )
+
+            if mem:
+                org_id = k[4:]
+                mrow = conn.execute(
+                    "SELECT tokens_used FROM usage_by_member WHERE org_id = ? AND user_id = ? AND period = ?",
+                    (org_id, mem, p),
+                ).fetchone()
+                if mrow:
+                    mu = int(mrow["tokens_used"])
+                    conn.execute(
+                        """
+                        UPDATE usage_by_member SET tokens_used = ?
+                        WHERE org_id = ? AND user_id = ? AND period = ?
+                        """,
+                        (max(0, mu - min(rt, mu)), org_id, mem, p),
+                    )
+
+            conn.execute(
+                """
+                INSERT INTO admin_audit_log (
+                    created_at, action, usage_key, period,
+                    before_tokens, before_overage, after_tokens, after_overage,
+                    reduce_tokens, reduce_overage, member_user_id, reason
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    created,
+                    "grant_goodwill",
+                    k,
+                    p,
+                    before_t,
+                    before_o,
+                    after_t,
+                    after_o,
+                    dec_t,
+                    dec_o,
+                    mem,
+                    rsn,
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    return {
+        "usage_key": k,
+        "period": p,
+        "before_tokens_used": before_t,
+        "before_overage_used": before_o,
+        "after_tokens_used": after_t,
+        "after_overage_used": after_o,
+        "applied_reduce_tokens": dec_t,
+        "applied_reduce_overage": dec_o,
+        "member_user_id": mem,
+    }
 
 
 # -------- Anonymous rate limit (in-memory, per IP) --------

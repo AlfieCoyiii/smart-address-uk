@@ -63,6 +63,54 @@ export function computeCreditsRemaining(u: UsageForCredits): CreditsBreakdown {
   };
 }
 
+/** Plan label for compact UI (navbar). */
+export function planDisplayName(plan: string): string {
+  const p = (plan || "free").toLowerCase();
+  if (p === "free") return "Free";
+  if (p === "starter") return "Starter";
+  if (p === "pro") return "Pro";
+  if (p === "corporate" || p === "enterprise") return "Corporate";
+  if (!plan) return "Free";
+  return plan.charAt(0).toUpperCase() + plan.slice(1).toLowerCase();
+}
+
+/**
+ * Navbar line: plan chip + remaining/cap with explicit "left" so it cannot read as "used/total".
+ */
+export function navbarUsageSummary(u: UsageForCredits): { line: string; title: string } {
+  const c = computeCreditsRemaining(u);
+  const chip = planDisplayName(u.plan);
+  const title = creditsRemainingTitle(c);
+
+  if (!c.isFree && c.paidOverageUnlimited) {
+    return {
+      line: `${chip} · ${c.includedLeft.toLocaleString()}/${c.planCap.toLocaleString()} left`,
+      title,
+    };
+  }
+
+  if (!c.isFree) {
+    const capTotal = c.planCap + (c.paidOverageCap ?? 0);
+    return {
+      line: `${chip} · ${c.totalLeft.toLocaleString()}/${capTotal.toLocaleString()} left`,
+      title,
+    };
+  }
+
+  if (c.overageCap > 0) {
+    const capTotal = c.includedCap + c.overageCap;
+    return {
+      line: `${chip} · ${c.totalLeft.toLocaleString()}/${capTotal.toLocaleString()} left`,
+      title,
+    };
+  }
+
+  return {
+    line: `${chip} · ${c.includedLeft.toLocaleString()}/${c.includedCap.toLocaleString()} left`,
+    title,
+  };
+}
+
 /** Short tooltip / title for nav hover */
 export function creditsRemainingTitle(c: CreditsBreakdown): string {
   if (c.isFree) {

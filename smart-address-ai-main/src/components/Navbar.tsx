@@ -76,10 +76,17 @@ const Navbar = () => {
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-border/50">
-      <div className="container mx-auto flex items-center justify-between h-16 px-4 lg:px-8">
-        <Logo />
+      {/*
+        Equal 1fr side columns + auto center keeps nav links visually centered in the bar.
+        justify-between tied the “center” to the gap between logo and auth, so credits
+        loading/changing width shifted the links.
+      */}
+      <div className="container mx-auto grid h-16 grid-cols-2 items-center gap-x-4 px-4 md:grid-cols-[1fr_auto_1fr] lg:px-8">
+        <div className="flex min-w-0 items-center justify-self-start">
+          <Logo />
+        </div>
 
-        <div className="hidden md:flex items-center gap-8">
+        <div className="hidden items-center justify-center gap-8 md:flex">
           {NAV_LINKS.map((link) => (
             <Link
               key={link.href}
@@ -93,13 +100,14 @@ const Navbar = () => {
           ))}
         </div>
 
-        <div className="hidden md:flex items-center gap-3">
-          <NavbarAuthSlot />
+        <div className="col-start-2 flex items-center justify-end gap-3 justify-self-end md:col-auto">
+          <div className="hidden items-center gap-3 md:flex">
+            <NavbarAuthSlot />
+          </div>
+          <button type="button" className="text-foreground md:hidden" onClick={() => setMobileOpen(!mobileOpen)}>
+            {mobileOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
         </div>
-
-        <button type="button" className="md:hidden text-foreground" onClick={() => setMobileOpen(!mobileOpen)}>
-          {mobileOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
       </div>
 
       {mobileOpen && (

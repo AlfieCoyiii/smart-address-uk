@@ -20,10 +20,12 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 from contextlib import asynccontextmanager
+import secrets
+from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import FastAPI, HTTPException, Request, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from usage_limits import (
     FREE_MONTHLY_TOKENS,
@@ -43,6 +45,10 @@ from usage_limits import (
     set_member_settings,
     get_member_usage,
     get_members_usage,
+    admin_list_usage_for_period,
+    admin_get_usage_row,
+    admin_list_audit,
+    admin_grant_goodwill,
 )
 from clerk_auth import verify_clerk_token, verify_clerk_token_with_reason
 from clerk_org import is_org_admin, get_org_members_with_roles, ensure_personal_workspace
@@ -1121,3 +1127,116 @@ def create_portal_session(request: CreatePortalRequest):
         return {"url": portal.url}
     except stripe.StripeError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ---------- Support admin (goodwill credits) — X-Admin-Key + ADMIN_API_KEY in env ----------
+
+
+def _period_utc_ym() -> str:
+    return time.strftime("%Y-%m", time.gmtime())
+
+
+def require_admin(x_admin_key: Annotated[str | None, Header(alias="X-Admin-Key")] = None) -> None:
+    expected = (os.environ.get("ADMIN_API_KEY") or "").strip()
+    if not expected or len(expected) < 32:
+        raise HTTPException(
+            status_code=503,
+            detail="Admin API is disabled. Set ADMIN_API_KEY in the API environment (at least 32 characters).",
+        )
+    if not x_admin_key:
+        raise HTTPException(status_code=403, detail="Missing X-Admin-Key header.")
+    if not secrets.compare_digest(x_admin_key.strip().encode("utf-8"), expected.encode("utf-8")):
+        raise HTTPException(status_code=403, detail="Invalid admin key.")
+
+
+class AdminGrantBody(BaseModel):
+    """Reduce recorded usage (goodwill). Same as refunding N billable addresses for the month."""
+
+    org_id: str | None = None
+    usage_key: str | None = None
+    period: str | None = None
+    reduce_tokens_used_by: int = 0
+    reduce_overage_used_by: int = 0
+    member_user_id: str | None = None
+    reason: str = ""
+
+    @model_validator(mode="after")
+    def _need_key(self):
+        if not (self.org_id or "").strip() and not (self.usage_key or "").strip():
+            raise ValueError("Provide org_id (Clerk org id) or usage_key (e.g. org:org_… or user:user_…).")
+        return self
+
+    def resolved_usage_key(self) -> str:
+        if (self.usage_key or "").strip():
+            return self.usage_key.strip()
+        return f"org:{(self.org_id or '').strip()}"
+
+
+@app.get("/admin/usage/list")
+def admin_usage_list(
+    period: str,
+    _admin: None = Depends(require_admin),
+    limit: int = 200,
+    offset: int = 0,
+):
+    """Paginated usage rows for one calendar month (UTC), e.g. period=2026-03."""
+    try:
+        rows = admin_list_usage_for_period(period, limit=limit, offset=offset)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"period": period, "limit": limit, "offset": offset, "rows": rows}
+
+
+@app.get("/admin/usage/lookup")
+def admin_usage_lookup(
+    usage_key: str,
+    _admin: None = Depends(require_admin),
+    period: str | None = None,
+):
+    p = (period or "").strip() or _period_utc_ym()
+    try:
+        row = admin_get_usage_row(usage_key, p)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not row:
+        raise HTTPException(status_code=404, detail="No usage row for this key/period.")
+    out: dict = {"usage": row}
+    if usage_key.strip().startswith("org:"):
+        oid = usage_key.strip()[4:]
+        if _stripe_enabled():
+            cap, slug = _org_paid_plan_info(oid)
+            out["stripe"] = {
+                "has_active_subscription": _org_has_active_subscription(oid),
+                "plan_cap": cap,
+                "plan_slug": slug,
+            }
+        else:
+            out["stripe"] = {"configured": False}
+    return out
+
+
+@app.post("/admin/usage/grant")
+def admin_usage_grant(body: AdminGrantBody, _admin: None = Depends(require_admin)):
+    p = (body.period or "").strip() or _period_utc_ym()
+    try:
+        result = admin_grant_goodwill(
+            body.resolved_usage_key(),
+            p,
+            body.reduce_tokens_used_by,
+            body.reduce_overage_used_by,
+            body.reason,
+            member_user_id=body.member_user_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "grant": result}
+
+
+@app.get("/admin/audit")
+def admin_audit_list(_admin: None = Depends(require_admin), limit: int = 100, offset: int = 0):
+    return {"entries": admin_list_audit(limit=limit, offset=offset)}
+
+
+@app.get("/admin/health")
+def admin_health(_admin: None = Depends(require_admin)):
+    return {"admin": True, "usage_db": (os.environ.get("USAGE_DB_PATH") or "default usage.db beside parse_api.py")}
