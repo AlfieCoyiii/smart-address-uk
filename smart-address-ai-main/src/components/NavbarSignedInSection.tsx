@@ -5,6 +5,7 @@ import { useEffectiveOrganization } from "@/hooks/useEffectiveOrganization";
 import { fetchUsage } from "@/lib/addressApi";
 import { USAGE_REFRESH_EVENT } from "@/lib/usageEvents";
 import { navbarUsageSummary } from "@/lib/usageCredits";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 /**
  * Mounted only inside `<Show when="signed-in">` so org hooks never run while signed out.
@@ -62,22 +63,39 @@ export function NavbarSignedInSection({
     return () => window.removeEventListener(USAGE_REFRESH_EVENT, onRefresh);
   }, [isSignedIn, getToken, organization?.id]);
 
+  const usageBar =
+    usage &&
+    (() => {
+      const { planChip, creditsRatio, tooltipBody } = navbarUsageSummary(usage);
+      return (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/90 shrink-0">
+            {planChip}
+          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-sm font-medium tabular-nums text-foreground cursor-default border-b border-dotted border-muted-foreground/50 decoration-muted-foreground/40 shrink-0">
+                {creditsRatio}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="start" className="max-w-xs whitespace-pre-line text-left">
+              {tooltipBody}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      );
+    })();
+
   if (mobile) {
     return (
       <div className="flex flex-col gap-3 pt-2">
-        {usage && (() => {
-          const { line, title } = navbarUsageSummary(usage);
-          return (
-            <span className="text-sm text-muted-foreground tabular-nums py-1" title={title}>
-              {line}
-            </span>
-          );
-        })()}
+        {usageBar && <div className="py-1">{usageBar}</div>}
         {organization && (
           <Link
             to="/team"
-            className="text-sm text-muted-foreground hover:text-foreground py-1"
+            className="text-sm font-medium text-primary hover:text-primary/90 py-1 truncate"
             onClick={onTeamNavigate}
+            title={`${organization.name} — Team`}
           >
             {organization.name}
           </Link>
@@ -89,22 +107,12 @@ export function NavbarSignedInSection({
 
   return (
     <>
-      {usage && (() => {
-        const { line, title } = navbarUsageSummary(usage);
-        return (
-          <span
-            className="text-sm text-muted-foreground tabular-nums hidden md:inline max-w-[min(280px,40vw)] truncate whitespace-nowrap"
-            title={title}
-          >
-            {line}
-          </span>
-        );
-      })()}
+      {usageBar && <div className="hidden md:flex items-center min-w-0 mr-1">{usageBar}</div>}
       {organization && (
         <Link
           to="/team"
-          className="text-sm text-muted-foreground hover:text-foreground truncate max-w-[100px] md:max-w-[200px]"
-          title={`${organization.name} — Manage team`}
+          className="hidden md:inline text-sm font-medium text-primary hover:text-primary/90 truncate max-w-[100px] lg:max-w-[220px] shrink"
+          title={`${organization.name} — Team`}
         >
           <span className="truncate">{organization.name}</span>
         </Link>

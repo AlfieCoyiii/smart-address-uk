@@ -24,15 +24,6 @@ const TermsOfService = () => {
             website and address-processing service offered under the name &quot;{LEGAL_ENTITY.tradingName}&quot;
             (&quot;Service&quot;) by {LEGAL_ENTITY.companyName}.
           </p>
-          <p className="mt-4 rounded-lg border border-border bg-card/50 p-4 text-sm text-muted-foreground leading-relaxed">
-            This document is intended as a practical starting point and is <strong className="text-foreground">not</strong> a
-            substitute for legal advice. You should have it reviewed by a solicitor qualified in England and Wales,
-            especially before taking on large business customers or regulated use cases. Contact:{" "}
-            <a href={`mailto:${LEGAL_ENTITY.contactEmail}`} className="text-primary hover:underline">
-              {LEGAL_ENTITY.contactEmail}
-            </a>
-            .
-          </p>
 
           <Section title="1. Who we are">
             <p>

@@ -20,6 +20,6 @@ export const LEGAL_ENTITY: LegalEntity = {
   registeredOffice: "33 Barretts Grove, London, England, N16 8AP",
   tradingName: "Smart Address UK",
   contactEmail: "help@smartaddress.uk",
-  lastUpdated: "3 April 2026",
+  lastUpdated: "29 March 2026",
   icoRegistrationNumber: "",
 };

@@ -4,7 +4,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Users, CreditCard, Settings } from "lucide-react";
+import { Loader2, Users, CreditCard, Settings, UserPlus } from "lucide-react";
 import { useAuth, useOrganization, useOrganizationList } from "@clerk/react";
 import { useEffectiveOrganization } from "@/hooks/useEffectiveOrganization";
 import {
@@ -14,7 +14,11 @@ import {
   type TeamMember,
 } from "@/lib/addressApi";
 import { createPortalSession } from "@/lib/stripeApi";
-import { computeCreditsRemaining, creditsRemainingTitle } from "@/lib/usageCredits";
+import {
+  computeCreditsRemaining,
+  creditsRemainingTitle,
+  CREDITS_MONTH_RESET_NOTE,
+} from "@/lib/usageCredits";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -24,6 +28,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 function overagePencePerAddress(plan: string): number {
   if (plan === "starter") return 6;
@@ -49,6 +61,9 @@ const Team = () => {
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState("");
   const [renaming, setRenaming] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"org:admin" | "org:member">("org:member");
+  const [inviting, setInviting] = useState(false);
 
   useEffect(() => {
     if (!isSignedIn) {
@@ -200,6 +215,30 @@ const Team = () => {
     }
   };
 
+  const handleInviteMember = async () => {
+    const email = inviteEmail.trim();
+    if (!email || !activeClerkOrg) {
+      toast.error("Enter an email address.");
+      return;
+    }
+    setInviting(true);
+    try {
+      await activeClerkOrg.inviteMember({
+        emailAddress: email,
+        role: inviteRole,
+      });
+      toast.success("Invitation sent. They will get an email to join this workspace.");
+      setInviteEmail("");
+    } catch (e: unknown) {
+      const err = e as { errors?: { message?: string }[] };
+      const msg =
+        err.errors?.[0]?.message ?? (e instanceof Error ? e.message : null) ?? "Could not send invitation.";
+      toast.error(msg);
+    } finally {
+      setInviting(false);
+    }
+  };
+
   const handleManageBilling = async () => {
     if (!organization?.id) return;
     setPortalLoading(true);
@@ -279,14 +318,14 @@ const Team = () => {
                       {credits.totalLeft.toLocaleString()}
                     </p>
                     <p className="text-sm text-muted-foreground capitalize mt-1">Plan: {settings.plan}</p>
-                    <p className="text-xs text-muted-foreground mt-2 max-w-lg" title={creditsRemainingTitle(credits)}>
+                    <p className="text-xs text-muted-foreground mt-2 max-w-lg whitespace-pre-line">
                       {credits.isFree ? (
                         <>
                           Included: {credits.includedLeft.toLocaleString()} / {credits.includedCap.toLocaleString()} credits
                           {credits.overageCap > 0
                             ? ` · Overage: ${credits.overageLeft.toLocaleString()} / ${credits.overageCap.toLocaleString()} credits`
                             : settings.overage_limit == null
-                              ? " · No overage limit (set one in team settings or upgrade)"
+                              ? " · No overage limit (set one on Pricing or upgrade)"
                               : null}
                         </>
                       ) : (
@@ -294,13 +333,14 @@ const Team = () => {
                           {credits.includedLeft.toLocaleString()} included credits left of {credits.planCap.toLocaleString()}{" "}
                           · {settings.tokens_used.toLocaleString()} total used
                           {credits.paidOverageUnlimited
-                            ? " · Metered overage: unlimited cap (set a cap in Team settings if you prefer)"
+                            ? " · Metered overage: unlimited cap (set a cap under Metered overage if you prefer)"
                             : credits.paidOverageCap !== null
                               ? ` · Overage: ${credits.paidOverageLeft.toLocaleString()} / ${credits.paidOverageCap.toLocaleString()} extra addresses`
                               : null}
                         </>
                       )}
                     </p>
+                    <p className="text-xs text-muted-foreground/90 mt-2 max-w-lg">{CREDITS_MONTH_RESET_NOTE}</p>
                     {settings.plan === "free" && (
                       <p className="text-xs text-amber-600/90 dark:text-amber-400/90 mt-3 max-w-xl">
                         On the free plan you get {settings.tokens_limit} credits/month per team with no overage. Subscribe on Pricing for
@@ -328,61 +368,58 @@ const Team = () => {
                 </div>
               </section>
 
-              {/* Admin: overage and visibility */}
-              {isAdmin && (
+              {/* Admin: metered overage (paid plans only) */}
+              {isAdmin && settings.plan !== "free" && (
                 <section className="mt-10 rounded-xl border border-border bg-card p-8">
                   <h2 className="text-lg font-semibold flex items-center gap-2">
                     <Settings className="w-5 h-5" />
-                    Team settings
+                    Metered overage
                   </h2>
-                  {settings.plan !== "free" && (
-                    <div className="mt-6 space-y-4 max-w-xl">
-                      <p className="text-sm text-muted-foreground">
-                        Your plan includes {settings.tokens_limit.toLocaleString()} addresses/month. Beyond that, each
-                        extra address is billed at{" "}
-                        <strong>{overagePencePerAddress(settings.plan)}p</strong> (Stripe metered). Set a monthly cap on
-                        extra addresses to control spend, or choose unlimited metered overage.
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          id="paid-ov-unl"
-                          checked={paidUnlimited}
-                          onChange={() => setPaidUnlimited(true)}
-                          className="h-4 w-4"
-                        />
-                        <label htmlFor="paid-ov-unl" className="text-sm cursor-pointer">
-                          Unlimited metered overage (pay per extra address, no cap)
-                        </label>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-3">
-                        <input
-                          type="radio"
-                          id="paid-ov-cap"
-                          checked={!paidUnlimited}
-                          onChange={() => setPaidUnlimited(false)}
-                          className="h-4 w-4"
-                        />
-                        <label htmlFor="paid-ov-cap" className="text-sm cursor-pointer whitespace-nowrap">
-                          Cap extra addresses at
-                        </label>
-                        <Input
-                          type="number"
-                          min={0}
-                          className="w-32"
-                          disabled={paidUnlimited}
-                          value={paidCapInput}
-                          onChange={(e) => setPaidCapInput(e.target.value)}
-                          placeholder="0 = none"
-                        />
-                        <span className="text-sm text-muted-foreground">/ month</span>
-                        <Button size="sm" onClick={() => void savePaidOverage(false)} disabled={savingPaidOverage}>
-                          {savingPaidOverage ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                          Save
-                        </Button>
-                      </div>
+                  <div className="mt-6 space-y-4 max-w-xl">
+                    <p className="text-sm text-muted-foreground">
+                      Your plan includes {settings.tokens_limit.toLocaleString()} addresses/month. Beyond that, each extra
+                      address is billed at <strong>{overagePencePerAddress(settings.plan)}p</strong> (Stripe metered). Set a
+                      monthly cap on extra addresses to control spend, or choose unlimited metered overage.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        id="paid-ov-unl"
+                        checked={paidUnlimited}
+                        onChange={() => setPaidUnlimited(true)}
+                        className="h-4 w-4"
+                      />
+                      <label htmlFor="paid-ov-unl" className="text-sm cursor-pointer">
+                        Unlimited metered overage (pay per extra address, no cap)
+                      </label>
                     </div>
-                  )}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <input
+                        type="radio"
+                        id="paid-ov-cap"
+                        checked={!paidUnlimited}
+                        onChange={() => setPaidUnlimited(false)}
+                        className="h-4 w-4"
+                      />
+                      <label htmlFor="paid-ov-cap" className="text-sm cursor-pointer whitespace-nowrap">
+                        Cap extra addresses at
+                      </label>
+                      <Input
+                        type="number"
+                        min={0}
+                        className="w-32"
+                        disabled={paidUnlimited}
+                        value={paidCapInput}
+                        onChange={(e) => setPaidCapInput(e.target.value)}
+                        placeholder="0 = none"
+                      />
+                      <span className="text-sm text-muted-foreground">/ month</span>
+                      <Button size="sm" onClick={() => void savePaidOverage(false)} disabled={savingPaidOverage}>
+                        {savingPaidOverage ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                        Save
+                      </Button>
+                    </div>
+                  </div>
                 </section>
               )}
 
@@ -392,6 +429,54 @@ const Team = () => {
                   <Users className="w-5 h-5" />
                   Members
                 </h2>
+                {isAdmin && activeClerkOrg && (
+                  <div className="mt-6 rounded-lg border border-border bg-muted/20 p-4 max-w-xl">
+                    <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+                      <UserPlus className="w-4 h-4" />
+                      Invite someone
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      We&apos;ll email them a link. If they don&apos;t have an account yet, they can create one; if they
+                      already use Smart Address UK, they can accept the invite to join this workspace.
+                    </p>
+                    <div className="mt-4 flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-end">
+                      <div className="flex-1 min-w-[200px] space-y-1.5">
+                        <Label htmlFor="invite-email">Email</Label>
+                        <Input
+                          id="invite-email"
+                          type="email"
+                          autoComplete="email"
+                          placeholder="colleague@company.com"
+                          value={inviteEmail}
+                          onChange={(e) => setInviteEmail(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") void handleInviteMember();
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-1.5 w-full sm:w-40">
+                        <Label>Role</Label>
+                        <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as "org:admin" | "org:member")}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="org:member">Member</SelectItem>
+                            <SelectItem value="org:admin">Admin</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button
+                        type="button"
+                        onClick={() => void handleInviteMember()}
+                        disabled={inviting || !inviteEmail.trim()}
+                      >
+                        {inviting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                        Send invite
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 {members.length === 0 ? (
                   <p className="mt-6 text-sm text-muted-foreground">No members to show.</p>
                 ) : (
@@ -419,7 +504,8 @@ const Team = () => {
                   </div>
                 )}
                 <p className="mt-6 pt-4 border-t border-border/50 text-xs text-muted-foreground">
-                  To add or remove members and change roles (admin/member), open the menu next to your avatar (top right) → Manage organization.
+                  Admins can invite people above. To remove someone or change their role after they join, use the menu next
+                  to your avatar → Manage organization.
                 </p>
               </section>
             </>
@@ -438,7 +524,8 @@ const Team = () => {
               <DialogTitle>Set your overage allowance</DialogTitle>
               <DialogDescription>
                 Thanks for subscribing. Choose how many extra addresses (beyond your plan&apos;s included amount) you
-                allow each month, or unlimited metered billing. You can change this anytime in Team settings.
+                allow each month, or unlimited metered billing. You can change this anytime under Metered overage on
+                this page.
               </DialogDescription>
             </DialogHeader>
             {!settings ? (
@@ -447,8 +534,8 @@ const Team = () => {
               </div>
             ) : settings.plan === "free" ? (
               <p className="text-sm text-muted-foreground py-2">
-                Your subscription may still be activating. Refresh in a moment, then set overage in Team settings below
-                — or save once your plan shows as Starter, Pro, or Corporate.
+                Your subscription may still be activating. Refresh in a moment, then set overage under Metered overage
+                below — or save once your plan shows as Starter, Pro, or Corporate.
               </p>
             ) : (
               <div className="space-y-4 py-2">

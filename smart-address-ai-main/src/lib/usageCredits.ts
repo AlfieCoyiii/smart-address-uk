@@ -74,66 +74,78 @@ export function planDisplayName(plan: string): string {
   return plan.charAt(0).toUpperCase() + plan.slice(1).toLowerCase();
 }
 
+/** Shown in usage tooltips — matches how the API counts monthly buckets (UTC). */
+export const CREDITS_MONTH_RESET_NOTE =
+  "Allowance resets at the start of each calendar month (UTC).";
+
 /**
- * Navbar line: plan chip + remaining/cap with explicit "left" so it cannot read as "used/total".
+ * Navbar: plan label + remaining/cap (no "left" in the compact bar).
  */
-export function navbarUsageSummary(u: UsageForCredits): { line: string; title: string } {
+export function navbarUsageSummary(u: UsageForCredits): {
+  planChip: string;
+  creditsRatio: string;
+  tooltipBody: string;
+} {
   const c = computeCreditsRemaining(u);
-  const chip = planDisplayName(u.plan);
-  const title = creditsRemainingTitle(c);
+  const planChip = planDisplayName(u.plan);
+  const tooltipBody = [creditsRemainingTitle(c), CREDITS_MONTH_RESET_NOTE].join("\n\n");
 
   if (!c.isFree && c.paidOverageUnlimited) {
     return {
-      line: `${chip} · ${c.includedLeft.toLocaleString()}/${c.planCap.toLocaleString()} left`,
-      title,
+      planChip,
+      creditsRatio: `${c.includedLeft.toLocaleString()}/${c.planCap.toLocaleString()}`,
+      tooltipBody,
     };
   }
 
   if (!c.isFree) {
     const capTotal = c.planCap + (c.paidOverageCap ?? 0);
     return {
-      line: `${chip} · ${c.totalLeft.toLocaleString()}/${capTotal.toLocaleString()} left`,
-      title,
+      planChip,
+      creditsRatio: `${c.totalLeft.toLocaleString()}/${capTotal.toLocaleString()}`,
+      tooltipBody,
     };
   }
 
   if (c.overageCap > 0) {
     const capTotal = c.includedCap + c.overageCap;
     return {
-      line: `${chip} · ${c.totalLeft.toLocaleString()}/${capTotal.toLocaleString()} left`,
-      title,
+      planChip,
+      creditsRatio: `${c.totalLeft.toLocaleString()}/${capTotal.toLocaleString()}`,
+      tooltipBody,
     };
   }
 
   return {
-    line: `${chip} · ${c.includedLeft.toLocaleString()}/${c.includedCap.toLocaleString()} left`,
-    title,
+    planChip,
+    creditsRatio: `${c.includedLeft.toLocaleString()}/${c.includedCap.toLocaleString()}`,
+    tooltipBody,
   };
 }
 
-/** Short tooltip / title for nav hover */
+/** Tooltip copy for credits (navbar / team). */
 export function creditsRemainingTitle(c: CreditsBreakdown): string {
   if (c.isFree) {
     const lines = [
-      `${c.totalLeft.toLocaleString()} credits total`,
+      `${c.totalLeft.toLocaleString()} credits remaining this month`,
       `${c.includedLeft.toLocaleString()} of ${c.includedCap.toLocaleString()} included credits`,
     ];
     if (c.overageCap > 0) {
       lines.push(`${c.overageLeft.toLocaleString()} of ${c.overageCap.toLocaleString()} overage credits`);
     } else {
-      lines.push("No overage limit set — set one on Pricing or upgrade for a higher allowance");
+      lines.push("No overage limit set — set one on Pricing or upgrade");
     }
-    return lines.join(" · ");
+    return lines.join("\n");
   }
   const lines = [
-    `${c.includedLeft.toLocaleString()} of ${c.planCap.toLocaleString()} included credits left`,
+    `${c.includedLeft.toLocaleString()} of ${c.planCap.toLocaleString()} included credits remaining`,
   ];
   if (c.paidOverageUnlimited) {
-    lines.push("Metered overage beyond plan (unlimited cap — set a cap in Team if you prefer)");
+    lines.push("Metered overage beyond plan (unlimited cap — set a cap under Metered overage if you prefer)");
   } else if (c.paidOverageCap !== null) {
     lines.push(
-      `${c.paidOverageLeft.toLocaleString()} of ${c.paidOverageCap.toLocaleString()} overage addresses left this month`,
+      `${c.paidOverageLeft.toLocaleString()} of ${c.paidOverageCap.toLocaleString()} overage addresses remaining this month`,
     );
   }
-  return lines.join(" · ");
+  return lines.join("\n");
 }
