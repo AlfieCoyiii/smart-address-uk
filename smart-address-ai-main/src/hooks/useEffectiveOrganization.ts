@@ -1,11 +1,11 @@
 import { useAuth, useOrganizationList } from "@clerk/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ensureWorkspace as ensureWorkspaceApi } from "@/lib/addressApi";
+import { pickOldestOrganizationId } from "@/lib/workspaceMembership";
 
 /**
- * Single workspace per user: Clerk organization is auto-created (API + optional webhook)
- * with a default name like "Alex's workspace" or "namefromemail's workspace".
- * Credits stay on the org — no reset when "creating a team" (that flow is now rename in Clerk UI).
+ * Workspace = Clerk organization. Supports multiple memberships; **active** org comes from the session
+ * when it matches a membership, otherwise we default to the **oldest** membership (sign-up workspace).
  */
 export function useEffectiveOrganization(): {
   organization: { id: string; name: string } | null;
@@ -25,13 +25,21 @@ export function useEffectiveOrganization(): {
   const [provisionError, setProvisionError] = useState(false);
   const provisionAttempted = useRef(false);
 
-  const first = userMemberships?.data?.[0];
-  const organization = first?.organization
-    ? { id: first.organization.id, name: first.organization.name }
-    : null;
+  const memberships = userMemberships?.data ?? [];
 
-  /** Stable primitive — avoids re-running the effect when Clerk replaces `userMemberships` by reference each render. */
-  const primaryMembershipOrgId = first?.organization?.id ?? null;
+  const organization = useMemo(() => {
+    if (memberships.length === 0) return null;
+    const ids = new Set(memberships.map((m) => m.organization.id));
+    const active =
+      activeOrgId && ids.has(activeOrgId)
+        ? memberships.find((m) => m.organization.id === activeOrgId)
+        : undefined;
+    const resolved = active ?? memberships[0];
+    if (!resolved?.organization) return null;
+    return { id: resolved.organization.id, name: resolved.organization.name };
+  }, [memberships, activeOrgId]);
+
+  const membershipIdsKey = memberships.map((m) => m.organization.id).join(",");
 
   const fullyLoaded = Boolean(authLoaded && orgListLoaded);
 
@@ -46,17 +54,22 @@ export function useEffectiveOrganization(): {
     if (!orgListLoaded) return;
 
     const run = async () => {
-      const oid = primaryMembershipOrgId;
-      if (oid) {
+      const list = userMemberships?.data ?? [];
+      const ids = new Set(list.map((m) => m.organization.id));
+
+      if (list.length > 0) {
         setProvisionError(false);
-        // setActive triggers session `touch` on every call — rate-limits (429) if this effect re-runs in a loop.
-        if (activeOrgId === oid) {
+        // Session already has an active org that is one of our memberships — do not override (e.g. after accepting an invite).
+        if (activeOrgId && ids.has(activeOrgId)) {
           return;
         }
-        try {
-          if (setActive) await setActive({ organization: oid });
-        } catch {
-          /* ignore */
+        const defaultId = pickOldestOrganizationId(list);
+        if (defaultId && setActive && activeOrgId !== defaultId) {
+          try {
+            await setActive({ organization: defaultId });
+          } catch {
+            /* ignore */
+          }
         }
         return;
       }
@@ -92,7 +105,7 @@ export function useEffectiveOrganization(): {
     authLoaded,
     isSignedIn,
     orgListLoaded,
-    primaryMembershipOrgId,
+    membershipIdsKey,
     activeOrgId,
     getToken,
     setActive,

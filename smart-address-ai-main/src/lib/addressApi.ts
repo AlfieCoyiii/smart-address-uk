@@ -222,6 +222,8 @@ export type TeamMember = {
   role: string;
   first_name: string;
   last_name: string;
+  /** Primary email from Clerk (for display when name is empty). */
+  email: string;
   tokens_used: number;
   can_see_usage: boolean;
   personal_limit: number | null;

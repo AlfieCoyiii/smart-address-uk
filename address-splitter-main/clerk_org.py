@@ -66,18 +66,21 @@ def is_org_admin(org_id: str, user_id: str) -> bool:
 
 
 def get_org_members_with_roles(org_id: str) -> list[dict[str, Any]]:
-    """Return list of { user_id, role, first_name, last_name } for org members."""
+    """Return list of { user_id, role, first_name, last_name, email } for org members."""
     out = []
     for m in get_org_memberships(org_id):
         pub = m.get("public_user_data") or m.get("publicUserData") or {}
         uid = _user_id_from_membership(m)
         if not uid:
             continue
+        u = fetch_clerk_user(uid)
+        email = primary_email_from_clerk_user(u) if u else ""
         out.append({
             "user_id": uid,
             "role": m.get("role") or "org:member",
             "first_name": (pub.get("first_name") or pub.get("firstName") or ""),
             "last_name": (pub.get("last_name") or pub.get("lastName") or ""),
+            "email": email,
         })
     return out
 
@@ -124,6 +127,22 @@ def list_user_organization_memberships(user_id: str) -> list[dict[str, Any]]:
         return data.get("data") or []
     except Exception:
         return []
+
+
+def primary_email_from_clerk_user(user: dict[str, Any]) -> str:
+    """Primary email for display (e.g. team roster when name is unset)."""
+    emails = user.get("email_addresses") or user.get("emailAddresses") or []
+    primary_id = user.get("primary_email_address_id") or user.get("primaryEmailAddressId")
+    for e in emails:
+        if not isinstance(e, dict):
+            continue
+        eid = e.get("id")
+        addr = (e.get("email_address") or e.get("emailAddress") or "").strip()
+        if primary_id and eid == primary_id:
+            return addr
+    if emails and isinstance(emails[0], dict):
+        return (emails[0].get("email_address") or emails[0].get("emailAddress") or "").strip()
+    return ""
 
 
 def workspace_name_from_clerk_user(user: dict[str, Any]) -> str:

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { UserButton, useAuth } from "@clerk/react";
+import { Link, useLocation } from "react-router-dom";
+import { OrganizationSwitcher, UserButton, useAuth } from "@clerk/react";
+import { clerkAppearance } from "@/lib/clerkTheme";
 import { useEffectiveOrganization } from "@/hooks/useEffectiveOrganization";
 import { fetchUsage } from "@/lib/addressApi";
 import { USAGE_REFRESH_EVENT } from "@/lib/usageEvents";
@@ -19,6 +20,7 @@ export function NavbarSignedInSection({
   /** Close mobile menu when opening Team */
   onTeamNavigate?: () => void;
 }) {
+  const location = useLocation();
   const { organization } = useEffectiveOrganization();
   const { getToken, isSignedIn } = useAuth();
   const [usage, setUsage] = useState<{
@@ -90,17 +92,34 @@ export function NavbarSignedInSection({
     return (
       <div className="flex flex-col gap-3 pt-2">
         {usageBar && <div className="py-1">{usageBar}</div>}
-        {organization && (
+        <div className="flex flex-col gap-2 w-full min-w-0">
+          <OrganizationSwitcher
+            hidePersonal
+            appearance={clerkAppearance}
+            afterSelectOrganizationUrl={location.pathname}
+            afterCreateOrganizationUrl="/team"
+            organizationProfileProps={{ appearance: clerkAppearance }}
+          />
           <Link
             to="/team"
-            className="text-sm font-medium text-primary hover:text-primary/90 py-1 truncate"
+            className="text-sm font-medium text-primary hover:text-primary/90 py-1"
             onClick={onTeamNavigate}
-            title={`${organization.name} — Team`}
+            title="Team & billing"
           >
-            {organization.name}
+            Team settings
           </Link>
-        )}
-        <UserButton afterSignOutUrl="/" />
+        </div>
+        <UserButton
+          afterSignOutUrl="/"
+          userProfileProps={{
+            appearance: {
+              ...clerkAppearance,
+              elements: {
+                profileSection__sessions: { display: "none" },
+              },
+            },
+          }}
+        />
       </div>
     );
   }
@@ -108,16 +127,33 @@ export function NavbarSignedInSection({
   return (
     <>
       {usageBar && <div className="hidden md:flex items-center min-w-0 mr-1">{usageBar}</div>}
-      {organization && (
+      <div className="hidden md:flex items-center gap-2 min-w-0 max-w-[min(380px,40vw)]">
+        <OrganizationSwitcher
+          hidePersonal
+          appearance={clerkAppearance}
+          afterSelectOrganizationUrl={location.pathname}
+          afterCreateOrganizationUrl="/team"
+          organizationProfileProps={{ appearance: clerkAppearance }}
+        />
         <Link
           to="/team"
-          className="hidden md:inline text-sm font-medium text-primary hover:text-primary/90 truncate max-w-[100px] lg:max-w-[220px] shrink"
-          title={`${organization.name} — Team`}
+          className="text-xs font-medium text-primary hover:text-primary/90 whitespace-nowrap shrink-0"
+          title="Team & billing"
         >
-          <span className="truncate">{organization.name}</span>
+          Team
         </Link>
-      )}
-      <UserButton afterSignOutUrl="/" />
+      </div>
+      <UserButton
+        afterSignOutUrl="/"
+        userProfileProps={{
+          appearance: {
+            ...clerkAppearance,
+            elements: {
+              profileSection__sessions: { display: "none" },
+            },
+          },
+        }}
+      />
     </>
   );
 }

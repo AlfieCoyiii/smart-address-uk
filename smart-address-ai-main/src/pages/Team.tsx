@@ -4,8 +4,8 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Users, CreditCard, Settings, UserPlus } from "lucide-react";
-import { useAuth, useOrganization, useOrganizationList } from "@clerk/react";
+import { Loader2, Users, CreditCard, Settings, UserPlus, LogOut } from "lucide-react";
+import { useAuth, useOrganization, useOrganizationList, useUser } from "@clerk/react";
 import { useEffectiveOrganization } from "@/hooks/useEffectiveOrganization";
 import {
   fetchTeamSettings,
@@ -36,11 +36,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { pickOldestMembership } from "@/lib/workspaceMembership";
+import { requestUsageRefresh } from "@/lib/usageEvents";
 
 function overagePencePerAddress(plan: string): number {
   if (plan === "starter") return 6;
   if (plan === "pro") return 4;
   return 2;
+}
+
+function memberDisplayName(m: Pick<TeamMember, "first_name" | "last_name" | "email" | "user_id">): string {
+  const name = [m.first_name, m.last_name].filter(Boolean).join(" ").trim();
+  if (name) return name;
+  const em = (m.email || "").trim();
+  if (em) return em;
+  return `${m.user_id.slice(0, 12)}…`;
 }
 
 const Team = () => {
@@ -49,7 +68,8 @@ const Team = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { organization, isProvisioning, isLoaded: orgHookLoaded, provisionError } = useEffectiveOrganization();
   const { organization: activeClerkOrg } = useOrganization();
-  const { userMemberships } = useOrganizationList({ userMemberships: true });
+  const { userMemberships, setActive } = useOrganizationList({ userMemberships: true });
+  const { user } = useUser();
   const [settings, setSettings] = useState<Awaited<ReturnType<typeof fetchTeamSettings>> | null>(null);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -64,6 +84,8 @@ const Team = () => {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"org:admin" | "org:member">("org:member");
   const [inviting, setInviting] = useState(false);
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
+  const [leaveLoading, setLeaveLoading] = useState(false);
 
   useEffect(() => {
     if (!isSignedIn) {
@@ -212,6 +234,42 @@ const Team = () => {
       toast.error(e instanceof Error ? e.message : "Could not rename workspace.");
     } finally {
       setRenaming(false);
+    }
+  };
+
+  const clerkMemberships = userMemberships?.data ?? [];
+  const canLeaveWorkspace = Boolean(organization?.id && clerkMemberships.length > 1);
+  const homeAfterLeave = pickOldestMembership(
+    clerkMemberships.filter((m) => m.organization.id !== organization?.id),
+  );
+
+  const handleLeaveWorkspace = async () => {
+    if (!organization?.id || !user) return;
+    const nextHome = pickOldestMembership(
+      clerkMemberships.filter((m) => m.organization.id !== organization.id),
+    );
+    setLeaveLoading(true);
+    try {
+      await user.leaveOrganization(organization.id);
+      await userMemberships?.revalidate?.();
+      if (nextHome && setActive) {
+        await setActive({ organization: nextHome.organization.id });
+      }
+      toast.success(
+        nextHome
+          ? `Switched to ${nextHome.organization.name}. Usage and billing follow that workspace now.`
+          : "Left workspace.",
+      );
+      requestUsageRefresh();
+      setLeaveDialogOpen(false);
+      navigate("/team", { replace: true });
+    } catch (e: unknown) {
+      const err = e as { errors?: { message?: string }[] };
+      toast.error(
+        err.errors?.[0]?.message ?? (e instanceof Error ? e.message : null) ?? "Could not leave workspace.",
+      );
+    } finally {
+      setLeaveLoading(false);
     }
   };
 
@@ -493,7 +551,7 @@ const Team = () => {
                         {members.map((m) => (
                           <tr key={m.user_id} className="border-b border-border/50">
                             <td className="py-4 pr-6 align-middle">
-                              {[m.first_name, m.last_name].filter(Boolean).join(" ") || m.user_id.slice(0, 12) + "…"}
+                              {memberDisplayName(m)}
                             </td>
                             <td className="py-4 pr-6 align-middle">{m.role.replace("org:", "")}</td>
                             <td className="py-4 pl-6 text-right align-middle">{m.tokens_used.toLocaleString()}</td>
@@ -504,10 +562,37 @@ const Team = () => {
                   </div>
                 )}
                 <p className="mt-6 pt-4 border-t border-border/50 text-xs text-muted-foreground">
-                  Admins can invite people above. To remove someone or change their role after they join, use the menu next
-                  to your avatar → Manage organization.
+                  Admins can invite people above. Use the <strong>workspace menu</strong> in the top bar to switch teams.
+                  To remove someone or change their role after they join, use the menu next to your avatar → Manage
+                  organization.
                 </p>
               </section>
+
+              {canLeaveWorkspace && (
+                <section className="mt-10 rounded-xl border border-destructive/30 bg-card p-8 max-w-xl">
+                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <LogOut className="w-5 h-5" />
+                    Leave this workspace
+                  </h2>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    You belong to more than one workspace. Leaving removes you from{" "}
+                    <span className="text-foreground font-medium">{organization.name}</span> only — your other workspaces
+                    stay. We&apos;ll switch you to{" "}
+                    <span className="text-foreground font-medium">
+                      {homeAfterLeave?.organization.name ?? "your other workspace"}
+                    </span>{" "}
+                    (usually the one from when you signed up).
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-4 border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => setLeaveDialogOpen(true)}
+                  >
+                    Leave this workspace…
+                  </Button>
+                </section>
+              )}
             </>
             );
           })()}
@@ -591,6 +676,39 @@ const Team = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <AlertDialog open={leaveDialogOpen} onOpenChange={setLeaveDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Leave {organization.name}?</AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div className="space-y-2 text-sm text-muted-foreground">
+                  <p>You will lose access to this team&apos;s credits and usage until you&apos;re invited again.</p>
+                  {homeAfterLeave ? (
+                    <p>
+                      After leaving, we&apos;ll make{" "}
+                      <strong className="text-foreground">{homeAfterLeave.organization.name}</strong> your active
+                      workspace (the oldest one on your account — usually from sign-up).
+                    </p>
+                  ) : null}
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={leaveLoading}>Cancel</AlertDialogCancel>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={leaveLoading}
+                onClick={() => void handleLeaveWorkspace()}
+              >
+                {leaveLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Leave workspace
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         </div>
       </div>
       <Footer />

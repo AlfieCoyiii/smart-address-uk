@@ -52,7 +52,13 @@ from usage_limits import (
     admin_grant_goodwill,
 )
 from clerk_auth import verify_clerk_token, verify_clerk_token_with_reason
-from clerk_org import is_org_admin, get_org_members_with_roles, ensure_personal_workspace
+from clerk_org import (
+    is_org_admin,
+    get_org_members_with_roles,
+    ensure_personal_workspace,
+    fetch_clerk_user,
+    primary_email_from_clerk_user,
+)
 from clerk_webhooks import verify_clerk_webhook_payload
 
 # Stripe (optional; set STRIPE_SECRET_KEY to enable billing)
@@ -685,6 +691,7 @@ def get_team_members(request: Request):
             "role": m["role"],
             "first_name": m.get("first_name", ""),
             "last_name": m.get("last_name", ""),
+            "email": m.get("email", ""),
             "tokens_used": tokens_used,
             "can_see_usage": can_see,
             "personal_limit": personal_limit,
@@ -693,11 +700,14 @@ def get_team_members(request: Request):
     if user_id not in seen:
         can_see, personal_limit = get_member_settings(org_id, user_id)
         tokens_used = usage_by_user.get(user_id, 0)
+        u = fetch_clerk_user(user_id)
+        em = primary_email_from_clerk_user(u) if u else ""
         out.append({
             "user_id": user_id,
             "role": "org:admin" if is_admin else "org:member",
             "first_name": "",
             "last_name": "",
+            "email": em,
             "tokens_used": tokens_used,
             "can_see_usage": can_see,
             "personal_limit": personal_limit,

@@ -174,3 +174,15 @@
 [data-clerk-component="OrganizationProfile"] label:has(input[type="file"]) {
   display: none !important;
 }
+
+/* Security → Active devices / sessions (Clerk element key may vary by version; CSS backs up userProfileProps). */
+[data-clerk-component="UserProfile"] [class*="cl-profileSection__sessions"],
+[data-clerk-component="UserProfile"] [class*="profileSection__sessions"] {
+  display: none !important;
+}
+
+/* Keep workspace switcher from stretching the navbar on small desktops */
+[data-clerk-component="OrganizationSwitcher"] {
+  min-width: 0;
+  max-width: min(320px, 38vw);
+}
