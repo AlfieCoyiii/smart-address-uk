@@ -612,28 +612,21 @@ const Team = () => {
               </section>
 
               {canLeaveWorkspace && (
-                <section className="mt-10 rounded-xl border border-destructive/30 bg-card p-8 max-w-xl">
-                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <LogOut className="w-5 h-5" />
-                    Leave this workspace
-                  </h2>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    You belong to more than one workspace. Leaving removes you from{" "}
-                    <span className="text-foreground font-medium">{organization.name}</span> only — your other workspaces
-                    stay. We&apos;ll switch you to{" "}
-                    <span className="text-foreground font-medium">
-                      {homeAfterLeave?.organization.name ?? "your other workspace"}
-                    </span>{" "}
-                    (usually the one from when you signed up).
-                  </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="mt-4 border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    onClick={() => setLeaveDialogOpen(true)}
-                  >
-                    Leave this workspace…
-                  </Button>
+                <section className="mt-10 rounded-xl border border-destructive/30 bg-card p-6 max-w-xl">
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                      <LogOut className="w-5 h-5" />
+                      Leave this workspace
+                    </h2>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive shrink-0"
+                      onClick={() => setLeaveDialogOpen(true)}
+                    >
+                      Leave
+                    </Button>
+                  </div>
                 </section>
               )}
             </>
@@ -746,7 +739,7 @@ const Team = () => {
                 onClick={() => void handleLeaveWorkspace()}
               >
                 {leaveLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                Leave workspace
+                Leave
               </Button>
             </AlertDialogFooter>
           </AlertDialogContent>
