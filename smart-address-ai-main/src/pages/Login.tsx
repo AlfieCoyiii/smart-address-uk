@@ -9,7 +9,7 @@ import { Link } from "react-router-dom";
  * After sign-in, use a full document navigation to `/` so Clerk + navbar hydrate from the same
  * session (SPA-only `<Navigate />` left the header showing Log in until manual refresh).
  *
- * `routing="hash"` keeps Clerk steps in the hash; React Router stays on `/sign-in`.
+ * `routing="path"` keeps invitation links (`__clerk_ticket` in the query string) compatible with Clerk’s org-invite flow; `/sign-in/*` is routed in App.tsx.
  */
 const Login = () => {
   const { userId } = useAuth();
@@ -39,7 +39,8 @@ const Login = () => {
           <Logo />
           <div className="w-full flex justify-center [&_.cl-rootBox]:mx-auto [&_.cl-card]:shadow-lg">
             <SignIn
-              routing="hash"
+              routing="path"
+              path="/sign-in"
               fallbackRedirectUrl="/"
               signUpUrl="/sign-up"
               fallback={<p className="text-sm text-muted-foreground">Loading sign-in…</p>}

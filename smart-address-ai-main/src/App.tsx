@@ -16,12 +16,14 @@ import Team from "./pages/Team";
 import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import NotFound from "./pages/NotFound";
+import { InvitationTicketRedirect } from "@/components/InvitationTicketRedirect";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
+      <InvitationTicketRedirect />
       <Toaster />
       <Sonner />
       <Routes>

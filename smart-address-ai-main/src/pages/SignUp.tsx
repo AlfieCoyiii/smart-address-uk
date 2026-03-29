@@ -34,7 +34,8 @@ const SignUp = () => {
           <Logo />
           <div className="w-full flex justify-center [&_.cl-rootBox]:mx-auto [&_.cl-card]:shadow-lg">
             <ClerkSignUp
-              routing="hash"
+              routing="path"
+              path="/sign-up"
               fallbackRedirectUrl="/"
               signInUrl="/sign-in"
               fallback={<p className="text-sm text-muted-foreground">Loading sign-up…</p>}
