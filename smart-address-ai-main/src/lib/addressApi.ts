@@ -177,6 +177,10 @@ export async function fetchTeamSettings(options: { token: string; orgId: string 
   can_see_usage: boolean;
   personal_limit: number | null;
   paid_overage_billing_enabled?: boolean;
+  /** Stripe has an active subscription for this org */
+  has_active_subscription?: boolean;
+  /** Org admins must cancel the subscription before leaving (members may leave). */
+  must_cancel_subscription_before_leave?: boolean;
 }> {
   const base = getApiBase();
   const url = base ? `${base}/team/settings` : "/api/team/settings";

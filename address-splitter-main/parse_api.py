@@ -164,7 +164,7 @@ app.add_middleware(
 async def clerk_webhook(request: Request):
     """
     Clerk → Webhooks → Add endpoint URL: https://<your-api-host>/webhooks/clerk
-    Subscribe to: user.created (optional), organization.created (recommended).
+    Subscribe to: user.created (optional), organization.created (recommended), organization.deleted (recommended).
     Set CLERK_WEBHOOK_SIGNING_SECRET from the webhook's signing secret.
     """
     body = await request.body()
@@ -184,6 +184,15 @@ async def clerk_webhook(request: Request):
             maybe_rename_new_organization_from_creator(data if isinstance(data, dict) else {})
         except Exception as e:
             logging.getLogger(__name__).warning("organization.created handler: %s", e)
+    elif etype == "organization.deleted":
+        oid = ""
+        if isinstance(data, dict):
+            oid = (data.get("id") or data.get("organization_id") or "").strip()
+        if oid:
+            n = cancel_stripe_subscriptions_for_org(oid)
+            logging.getLogger(__name__).info(
+                "organization.deleted org_id=%s stripe_subscriptions_cancelled=%s", oid, n
+            )
     return {"received": True}
 
 
@@ -635,6 +644,9 @@ def get_team_settings(request: Request):
     overage_pid = _overage_price_id_for_plan_slug(plan_slug) if plan_slug else None
     is_admin = is_org_admin(org_id, user_id)
     can_see_usage, personal_limit = get_member_settings(org_id, user_id)
+    has_active_subscription = _org_has_active_subscription(org_id)
+    # Org admins cannot leave while Stripe still bills this workspace (members may leave).
+    must_cancel_subscription_before_leave = bool(is_admin and has_active_subscription)
     return {
         "org_settings": {
             "overage_limit": None,
@@ -650,6 +662,8 @@ def get_team_settings(request: Request):
         "paid_overage_billing_enabled": bool(plan_cap is not None and overage_pid),
         "can_see_usage": can_see_usage,
         "personal_limit": personal_limit,
+        "has_active_subscription": has_active_subscription,
+        "must_cancel_subscription_before_leave": must_cancel_subscription_before_leave,
     }
 
 
@@ -1026,6 +1040,37 @@ def _org_has_active_subscription(org_id: str) -> bool:
         return len(subs.data) > 0
     except Exception:
         return False
+
+
+def cancel_stripe_subscriptions_for_org(org_id: str) -> int:
+    """
+    Cancel all active Stripe subscriptions for this Clerk org (safety net when the org is deleted
+    in Clerk, or for admin maintenance). Returns how many subscriptions were cancelled.
+    """
+    if not _stripe_enabled():
+        return 0
+    cancelled = 0
+    try:
+        customers = stripe.Customer.list(limit=500)
+        matching = [c for c in customers.data if c.metadata.get("org_id") == org_id]
+        for cust in matching:
+            subs = stripe.Subscription.list(customer=cust.id, status="active", limit=100)
+            for sub in subs.data:
+                sid = getattr(sub, "id", None) or (sub.get("id") if isinstance(sub, dict) else None)
+                if not sid:
+                    continue
+                try:
+                    if hasattr(stripe.Subscription, "cancel"):
+                        stripe.Subscription.cancel(sid)
+                    else:
+                        stripe.Subscription.delete(sid)
+                    cancelled += 1
+                except Exception as e:
+                    logging.getLogger(__name__).warning("Stripe cancel failed sub=%s: %s", sid, e)
+        return cancelled
+    except Exception as e:
+        logging.getLogger(__name__).warning("cancel_stripe_subscriptions_for_org: %s", e)
+        return cancelled
 
 
 def _org_paid_plan_info(org_id: str) -> tuple[int | None, str | None]:

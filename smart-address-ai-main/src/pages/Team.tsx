@@ -252,6 +252,11 @@ const Team = () => {
 
   const handleLeaveWorkspace = async () => {
     if (!organization?.id || !user) return;
+    if (settings?.must_cancel_subscription_before_leave) {
+      toast.error("Cancel the subscription in Stripe (billing portal) before leaving this workspace.");
+      setLeaveDialogOpen(false);
+      return;
+    }
     const nextHome = pickOldestMembership(
       clerkMemberships.filter((m) => m.organization.id !== organization.id),
     );
@@ -344,6 +349,13 @@ const Team = () => {
             Use the control above to switch workspaces or open Clerk&apos;s manage/delete options. The team button in
             the nav bar brings you here.
           </p>
+          {!loading && settings?.is_admin && settings?.has_active_subscription && (
+            <p className="mt-2 text-xs text-amber-800/90 dark:text-amber-400/90 max-w-2xl">
+              <span className="font-medium text-foreground">Billing:</span> cancel your Stripe subscription (billing
+              portal below) before deleting this workspace in Clerk. If an org is removed while billing is still active,
+              we cancel Stripe automatically as a safety net.
+            </p>
+          )}
 
           {loading && (
             <div className="mt-8 flex items-center gap-2 text-muted-foreground">
@@ -373,6 +385,7 @@ const Team = () => {
               overage_used: settings.overage_used,
               overage_limit: settings.overage_limit,
             });
+            const billingBlocksAdminLeave = Boolean(settings.must_cancel_subscription_before_leave);
             return (
             <>
               {isAdmin && (
@@ -613,19 +626,38 @@ const Team = () => {
 
               {canLeaveWorkspace && (
                 <section className="mt-10 rounded-xl border border-destructive/30 bg-card p-6 max-w-xl">
-                  <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                       <LogOut className="w-5 h-5" />
                       Leave this workspace
                     </h2>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive shrink-0"
-                      onClick={() => setLeaveDialogOpen(true)}
-                    >
-                      Leave
-                    </Button>
+                    {billingBlocksAdminLeave ? (
+                      <div className="flex flex-col sm:items-end gap-2 text-sm">
+                        <p className="text-muted-foreground max-w-md sm:text-right">
+                          Cancel this workspace&apos;s Stripe subscription first (you&apos;re an admin with an active plan).
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0 w-fit"
+                          disabled={portalLoading}
+                          onClick={() => void handleManageBilling()}
+                        >
+                          {portalLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                          Open billing portal
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive shrink-0"
+                        onClick={() => setLeaveDialogOpen(true)}
+                      >
+                        Leave
+                      </Button>
+                    )}
                   </div>
                 </section>
               )}
