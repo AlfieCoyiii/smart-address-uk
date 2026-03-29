@@ -75,11 +75,18 @@ def get_org_members_with_roles(org_id: str) -> list[dict[str, Any]]:
             continue
         u = fetch_clerk_user(uid)
         email = primary_email_from_clerk_user(u) if u else ""
+        fn = (pub.get("first_name") or pub.get("firstName") or "").strip()
+        ln = (pub.get("last_name") or pub.get("lastName") or "").strip()
+        if u:
+            if not fn:
+                fn = (u.get("first_name") or u.get("firstName") or "").strip()
+            if not ln:
+                ln = (u.get("last_name") or u.get("lastName") or "").strip()
         out.append({
             "user_id": uid,
             "role": m.get("role") or "org:member",
-            "first_name": (pub.get("first_name") or pub.get("firstName") or ""),
-            "last_name": (pub.get("last_name") or pub.get("lastName") or ""),
+            "first_name": fn,
+            "last_name": ln,
             "email": email,
         })
     return out
@@ -171,6 +178,101 @@ def workspace_name_from_clerk_user(user: dict[str, Any]) -> str:
         safe = re.sub(r"[^a-zA-Z0-9._-]+", "", local) or "user"
         base = f"{safe}'s workspace"
     return base[:128]
+
+
+def patch_clerk_organization(org_id: str, *, name: str | None = None) -> dict[str, Any] | None:
+    """PATCH /organizations/{id} — e.g. rename after enrollment."""
+    if not _REQUESTS_AVAILABLE or not _secret_key():
+        return None
+    body: dict[str, Any] = {}
+    if name is not None:
+        body["name"] = name
+    if not body:
+        return None
+    try:
+        r = requests.patch(
+            f"{CLERK_API_BASE}/organizations/{org_id}",
+            headers=_auth_headers(),
+            json=body,
+            timeout=20,
+        )
+        if r.status_code not in (200, 201):
+            print(f"[clerk_org] PATCH organization failed {r.status_code}: {r.text[:500]}")
+            return None
+        return r.json()
+    except Exception as e:
+        print(f"[clerk_org] PATCH organization error: {e}")
+        return None
+
+
+_GENERIC_ORG_NAMES = frozenset(
+    {
+        "my organization",
+        "my organisation",
+        "organization",
+        "organisation",
+        "personal organization",
+        "personal organisation",
+        "default organization",
+        "default organisation",
+        "new organization",
+        "new organisation",
+        "untitled",
+        "org",
+        "team",
+    },
+)
+
+
+def _is_generic_clerk_default_org_name(name: str) -> bool:
+    n = (name or "").strip().lower()
+    if not n:
+        return True
+    if n in _GENERIC_ORG_NAMES:
+        return True
+    if n.startswith("my ") and ("org" in n or "organisation" in n or "organization" in n):
+        return True
+    return False
+
+
+def maybe_rename_new_organization_from_creator(org_json: dict[str, Any]) -> None:
+    """
+    When Clerk enrollment creates an org with a generic name, rename to `{FirstName}'s organisation`
+    using the creator's profile (requires first name on the user — enable in Clerk Dashboard).
+    """
+    oid = org_json.get("id")
+    if not oid or not isinstance(oid, str):
+        return
+    current = (org_json.get("name") or "").strip()
+    if not _is_generic_clerk_default_org_name(current):
+        return
+    created_by = (
+        org_json.get("created_by")
+        or org_json.get("created_by_user_id")
+        or org_json.get("createdBy")
+    )
+    if not created_by:
+        for m in get_org_memberships(oid):
+            uid = _user_id_from_membership(m)
+            role = (m.get("role") or "").lower()
+            if uid and role in ("org:admin", "admin"):
+                created_by = uid
+                break
+        if not created_by:
+            mems = get_org_memberships(oid)
+            if mems:
+                created_by = _user_id_from_membership(mems[0])
+    if not created_by:
+        return
+    user = fetch_clerk_user(created_by)
+    if not user:
+        return
+    first = (user.get("first_name") or user.get("firstName") or "").strip()
+    if not first:
+        return
+    display = first[0].upper() + first[1:].lower() if len(first) > 1 else first.upper()
+    new_name = f"{display}'s organisation"[:128]
+    patch_clerk_organization(oid, name=new_name)
 
 
 def create_clerk_organization(name: str, created_by_user_id: str) -> dict[str, Any] | None:

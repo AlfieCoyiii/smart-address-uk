@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Users, CreditCard, Settings, UserPlus, LogOut } from "lucide-react";
-import { useAuth, useOrganization, useOrganizationList, useUser } from "@clerk/react";
+import { useAuth, useOrganizationList, useUser } from "@clerk/react";
 import { useEffectiveOrganization } from "@/hooks/useEffectiveOrganization";
 import {
   fetchTeamSettings,
@@ -67,8 +67,13 @@ const Team = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { organization, isProvisioning, isLoaded: orgHookLoaded, provisionError } = useEffectiveOrganization();
-  const { organization: activeClerkOrg } = useOrganization();
   const { userMemberships, setActive } = useOrganizationList({ userMemberships: true });
+  /** Full Clerk `Organization` for this workspace — works even when session "active org" is unset. */
+  const workspaceClerkOrg = useMemo(() => {
+    if (!organization?.id || !userMemberships?.data?.length) return null;
+    const m = userMemberships.data.find((mem) => mem.organization.id === organization.id);
+    return m?.organization ?? null;
+  }, [organization?.id, userMemberships?.data]);
   const { user } = useUser();
   const [settings, setSettings] = useState<Awaited<ReturnType<typeof fetchTeamSettings>> | null>(null);
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -220,9 +225,9 @@ const Team = () => {
   const handleRenameWorkspace = async () => {
     const n = renameDraft.trim();
     if (!n || !organization || n === organization.name) return;
-    const clerkOrg = activeClerkOrg;
+    const clerkOrg = workspaceClerkOrg;
     if (!clerkOrg) {
-      toast.error("Session not ready. Refresh the page and try again.");
+      toast.error("Workspace not ready. Refresh the page and try again.");
       return;
     }
     setRenaming(true);
@@ -275,13 +280,13 @@ const Team = () => {
 
   const handleInviteMember = async () => {
     const email = inviteEmail.trim();
-    if (!email || !activeClerkOrg) {
+    if (!email || !workspaceClerkOrg) {
       toast.error("Enter an email address.");
       return;
     }
     setInviting(true);
     try {
-      await activeClerkOrg.inviteMember({
+      await workspaceClerkOrg.inviteMember({
         emailAddress: email,
         role: inviteRole,
       });
@@ -328,6 +333,19 @@ const Team = () => {
             </div>
           )}
 
+          {!loading && !settings && organization && (
+            <div className="mt-8 rounded-xl border border-destructive/30 bg-destructive/5 p-6 max-w-lg">
+              <p className="text-sm text-foreground font-medium">Couldn&apos;t load team data</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Check that the API is reachable and you&apos;re signed in with a workspace selected. If this persists,
+                open the browser network tab for failed requests to <code className="text-xs">/api/team</code>.
+              </p>
+              <Button className="mt-4" variant="outline" onClick={() => window.location.reload()}>
+                Refresh page
+              </Button>
+            </div>
+          )}
+
           {!loading && settings && (() => {
             const credits = computeCreditsRemaining({
               plan: settings.plan,
@@ -353,7 +371,12 @@ const Team = () => {
                     />
                     <Button
                       size="sm"
-                      disabled={renaming || !renameDraft.trim() || renameDraft.trim() === organization.name}
+                      disabled={
+                        renaming ||
+                        !workspaceClerkOrg ||
+                        !renameDraft.trim() ||
+                        renameDraft.trim() === organization.name
+                      }
                       onClick={() => void handleRenameWorkspace()}
                     >
                       {renaming ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
@@ -487,7 +510,7 @@ const Team = () => {
                   <Users className="w-5 h-5" />
                   Members
                 </h2>
-                {isAdmin && activeClerkOrg && (
+                {isAdmin && workspaceClerkOrg && (
                   <div className="mt-6 rounded-lg border border-border bg-muted/20 p-4 max-w-xl">
                     <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
                       <UserPlus className="w-4 h-4" />

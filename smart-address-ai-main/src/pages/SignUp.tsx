@@ -16,6 +16,11 @@ import { Link } from "react-router-dom";
  * Full reload to `/` after sign-up **fully** finishes (including org enrollment / session tasks).
  * Do not redirect on `userId` alone — that fires mid-flow and blanks the page while Clerk still
  * expects to render verification, Turnstile, or organization steps.
+ *
+ * **Names on sign-up:** Clerk controls which fields appear. In the Clerk Dashboard, open
+ * User & authentication → Profile / Sign-up (wording varies) and set **First name** and
+ * **Last name** to **Required** (or add them to the sign-up form). The API webhook then
+ * renames generic default orgs to `{FirstName}'s organisation` when possible.
  */
 const SignUp = () => {
   const { userId, isLoaded: authLoaded } = useAuth();

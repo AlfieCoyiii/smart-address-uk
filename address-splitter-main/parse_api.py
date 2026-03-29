@@ -59,6 +59,7 @@ from clerk_org import (
     list_user_organization_memberships,
     fetch_clerk_user,
     primary_email_from_clerk_user,
+    maybe_rename_new_organization_from_creator,
 )
 from clerk_webhooks import verify_clerk_webhook_payload
 
@@ -163,7 +164,8 @@ app.add_middleware(
 async def clerk_webhook(request: Request):
     """
     Clerk → Webhooks → Add endpoint URL: https://<your-api-host>/webhooks/clerk
-    Subscribe to user.created. Set CLERK_WEBHOOK_SIGNING_SECRET from the webhook's signing secret.
+    Subscribe to: user.created (optional), organization.created (recommended).
+    Set CLERK_WEBHOOK_SIGNING_SECRET from the webhook's signing secret.
     """
     body = await request.body()
     try:
@@ -173,10 +175,15 @@ async def clerk_webhook(request: Request):
         raise HTTPException(status_code=400, detail=str(e))
     etype = event.get("type")
     data = event.get("data") or {}
-    # Organizations are created by Clerk (e.g. "Default organization" / enrollment). We no longer
-    # call ensure_personal_workspace here — it duplicated orgs when both Clerk and our API created one.
+    # Organizations are created by Clerk enrollment. We no longer call ensure_personal_workspace
+    # on user.created — it duplicated orgs when both Clerk and our API created one.
     if etype == "user.created":
         pass
+    elif etype == "organization.created":
+        try:
+            maybe_rename_new_organization_from_creator(data if isinstance(data, dict) else {})
+        except Exception as e:
+            logging.getLogger(__name__).warning("organization.created handler: %s", e)
     return {"received": True}
 
 
