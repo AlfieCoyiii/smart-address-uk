@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { SignedIn, SignedOut, useAuth } from "@clerk/clerk-react";
+import { Show, useAuth } from "@clerk/react";
 import { NavbarSignedInSection } from "@/components/NavbarSignedInSection";
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/Logo";
@@ -59,12 +59,12 @@ const Navbar = () => {
             <SignOutCTAs />
           ) : (
             <>
-              <SignedOut>
+              <Show when="signed-out">
                 <SignOutCTAs />
-              </SignedOut>
-              <SignedIn>
+              </Show>
+              <Show when="signed-in">
                 <NavbarSignedInSection />
-              </SignedIn>
+              </Show>
             </>
           )}
         </div>
@@ -91,12 +91,12 @@ const Navbar = () => {
               <SignOutCTAs onNavigate={() => setMobileOpen(false)} />
             ) : (
               <>
-                <SignedOut>
+                <Show when="signed-out">
                   <SignOutCTAs onNavigate={() => setMobileOpen(false)} />
-                </SignedOut>
-                <SignedIn>
+                </Show>
+                <Show when="signed-in">
                   <NavbarSignedInSection mobile onTeamNavigate={() => setMobileOpen(false)} />
-                </SignedIn>
+                </Show>
               </>
             )}
           </div>

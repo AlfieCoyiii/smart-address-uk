@@ -5,7 +5,7 @@ import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Users, CreditCard, Settings } from "lucide-react";
-import { useAuth, useOrganization, useOrganizationList } from "@clerk/clerk-react";
+import { useAuth, useOrganization, useOrganizationList } from "@clerk/react";
 import { useEffectiveOrganization } from "@/hooks/useEffectiveOrganization";
 import {
   fetchTeamSettings,

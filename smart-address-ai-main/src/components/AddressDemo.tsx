@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useAuth } from "@clerk/clerk-react";
+import { useAuth } from "@clerk/react";
 import { useEffectiveOrganization } from "@/hooks/useEffectiveOrganization";
 import { parseAddress, COLUMN_LABELS, type ColumnKey, type ParsedAddress } from "@/lib/addressParser";
 import { parseAddressesApi, type UnsplitEntry } from "@/lib/addressApi";

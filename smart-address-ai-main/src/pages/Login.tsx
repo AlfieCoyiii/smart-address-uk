@@ -1,7 +1,7 @@
 import { NavbarAuth } from "@/components/NavbarAuth";
 import Footer from "@/components/Footer";
 import Logo from "@/components/Logo";
-import { SignIn, useAuth } from "@clerk/clerk-react";
+import { SignIn, useAuth } from "@clerk/react";
 import { Navigate, Link } from "react-router-dom";
 
 /**

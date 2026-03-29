@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { UserButton, useAuth } from "@clerk/clerk-react";
+import { UserButton, useAuth } from "@clerk/react";
 import { useEffectiveOrganization } from "@/hooks/useEffectiveOrganization";
 import { fetchUsage } from "@/lib/addressApi";
 import { USAGE_REFRESH_EVENT } from "@/lib/usageEvents";
 import { computeCreditsRemaining, creditsRemainingTitle } from "@/lib/usageCredits";
 
 /**
- * Mounted only inside `<SignedIn>` so `useOrganizationList` / ensure-workspace never run while signed out.
+ * Mounted only inside `<Show when="signed-in">` so org hooks never run while signed out.
  * Competing Clerk requests during sign-out or on `/sign-in` were a likely source of flaky sessions.
  */
 export function NavbarSignedInSection({

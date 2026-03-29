@@ -1,4 +1,4 @@
-import { useAuth, useOrganizationList } from "@clerk/clerk-react";
+import { useAuth, useOrganizationList } from "@clerk/react";
 import { useEffect, useRef, useState } from "react";
 import { ensureWorkspace as ensureWorkspaceApi } from "@/lib/addressApi";
 

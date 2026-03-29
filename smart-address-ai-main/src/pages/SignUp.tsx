@@ -1,6 +1,6 @@
 import { NavbarAuth } from "@/components/NavbarAuth";
 import Logo from "@/components/Logo";
-import { SignUp as ClerkSignUp, useAuth } from "@clerk/clerk-react";
+import { SignUp as ClerkSignUp, useAuth } from "@clerk/react";
 import { Link, Navigate } from "react-router-dom";
 
 /** Same reset strategy as `Login.tsx`: no `isLoaded` gate; hash routing; `userId` redirect only. */
