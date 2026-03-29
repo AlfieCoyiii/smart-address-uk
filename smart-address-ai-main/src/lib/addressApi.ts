@@ -97,8 +97,8 @@ export async function fetchParseContext(options: { token: string; orgId?: string
 }
 
 /**
- * Ensure the signed-in user has a Clerk workspace org (creates one with a default name if needed).
- * Migrates personal free-tier usage into the org. Idempotent.
+ * Sync workspace with the backend: resolves the user's existing Clerk org (does not create orgs —
+ * Clerk enrollment does). Migrates personal free-tier SQLite usage into that org when needed.
  */
 export async function ensureWorkspace(options: { token: string }): Promise<{
   org_id: string;

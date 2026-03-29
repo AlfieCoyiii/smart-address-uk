@@ -46,6 +46,7 @@ from usage_limits import (
     set_member_settings,
     get_member_usage,
     get_members_usage,
+    migrate_personal_usage_to_org,
     admin_list_usage_for_period,
     admin_get_usage_row,
     admin_list_audit,
@@ -55,7 +56,7 @@ from clerk_auth import verify_clerk_token, verify_clerk_token_with_reason
 from clerk_org import (
     is_org_admin,
     get_org_members_with_roles,
-    ensure_personal_workspace,
+    list_user_organization_memberships,
     fetch_clerk_user,
     primary_email_from_clerk_user,
 )
@@ -172,13 +173,10 @@ async def clerk_webhook(request: Request):
         raise HTTPException(status_code=400, detail=str(e))
     etype = event.get("type")
     data = event.get("data") or {}
+    # Organizations are created by Clerk (e.g. "Default organization" / enrollment). We no longer
+    # call ensure_personal_workspace here — it duplicated orgs when both Clerk and our API created one.
     if etype == "user.created":
-        uid = data.get("id")
-        if uid:
-            try:
-                ensure_personal_workspace(uid, data)
-            except Exception as ex:
-                print(f"[webhook] user.created ensure_personal_workspace failed for {uid}: {ex}")
+        pass
     return {"received": True}
 
 
@@ -420,6 +418,8 @@ def parse_addresses(body: ParseRequest, request: Request):
             raise HTTPException(status_code=500, detail=f"Parser error: {str(e)}")
 
     org_id = org_id_header
+    if user_id and org_id:
+        migrate_personal_usage_to_org(user_id, org_id)
     _reject_too_many_skipped(addresses)
     rate_key = f"{org_id or 'personal'}:{user_id}"
     rl_err = check_signed_in_parse_rate_limit(rate_key)
@@ -529,6 +529,8 @@ def get_usage_endpoint(request: Request):
     user_id = verify_clerk_token(auth_header) if auth_header else None
     if not user_id:
         raise HTTPException(status_code=401, detail="Sign in to view usage.")
+    if org_id:
+        migrate_personal_usage_to_org(user_id, org_id)
     tokens_used, overage_used, _free_overage_limit = get_usage(org_id, user_id)
     plan_cap, plan_slug = _org_paid_plan_info(org_id) if org_id else (None, None)
     tokens_limit = plan_cap if plan_cap is not None else FREE_MONTHLY_TOKENS
@@ -570,19 +572,27 @@ class EnsureWorkspaceOut(BaseModel):
 @app.post("/team/ensure-workspace", response_model=EnsureWorkspaceOut)
 def post_team_ensure_workspace(request: Request):
     """
-    Ensure the signed-in user has a Clerk organization (default workspace name).
-    Migrates personal free-tier usage into the org so credits don't reset.
-    Safe to call on every app load (idempotent).
+    Return the user's existing Clerk workspace and migrate SQLite usage (user:* → org:*) if needed.
+    Does **not** create organizations — Clerk Dashboard enrollment handles that.
     """
     auth_header = request.headers.get("authorization") or ""
     user_id = verify_clerk_token(auth_header) if auth_header else None
     if not user_id:
         raise HTTPException(status_code=401, detail="Sign in required.")
-    try:
-        out = ensure_personal_workspace(user_id, None)
-        return EnsureWorkspaceOut(**out)
-    except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+    mems = list_user_organization_memberships(user_id)
+    if not mems:
+        raise HTTPException(
+            status_code=503,
+            detail="No workspace yet. Finish Clerk sign-up (organization is created by Clerk). Refresh in a moment.",
+        )
+    first = mems[0]
+    org = first.get("organization") or {}
+    oid = org.get("id")
+    name = org.get("name") or ""
+    if not oid:
+        raise HTTPException(status_code=503, detail="Workspace not ready. Try again.")
+    migrate_personal_usage_to_org(user_id, oid)
+    return EnsureWorkspaceOut(org_id=oid, name=name, created=False)
 
 
 # ---------- Team management (settings, members, usage, permissions) ----------

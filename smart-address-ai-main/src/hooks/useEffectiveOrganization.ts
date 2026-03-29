@@ -1,29 +1,34 @@
 import { useAuth, useOrganizationList } from "@clerk/react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ensureWorkspace as ensureWorkspaceApi } from "@/lib/addressApi";
-import { pickOldestOrganizationId } from "@/lib/workspaceMembership";
+import { useEffect, useMemo, useState } from "react";
+import { pickOldestMembership, pickOldestOrganizationId } from "@/lib/workspaceMembership";
+
+const ORG_POLL_MAX = 45;
 
 /**
  * Workspace = Clerk organization. Supports multiple memberships; **active** org comes from the session
  * when it matches a membership, otherwise we default to the **oldest** membership (sign-up workspace).
+ *
+ * Organizations are created by **Clerk** (enrollment / default org). While memberships are still empty
+ * after sign-in, we poll `userMemberships.revalidate()` — we do not call our API to create orgs.
  */
 export function useEffectiveOrganization(): {
   organization: { id: string; name: string } | null;
   /** Clerk auth + org list finished loading */
   isLoaded: boolean;
-  /** True while calling POST /team/ensure-workspace for users with no org yet */
+  /** True while waiting for Clerk to attach the first organization membership */
   isProvisioning: boolean;
-  /** True if ensure-workspace failed (show retry UI) */
+  /** True if no workspace appeared after polling (Clerk misconfiguration or slow network) */
   provisionError: boolean;
 } {
-  const { isSignedIn, getToken, isLoaded: authLoaded, orgId: activeOrgId } = useAuth();
+  const { isSignedIn, isLoaded: authLoaded, orgId: activeOrgId } = useAuth();
   const { isLoaded: orgListLoaded, userMemberships, setActive } = useOrganizationList({
     userMemberships: true,
   });
 
   const [isProvisioning, setIsProvisioning] = useState(false);
   const [provisionError, setProvisionError] = useState(false);
-  const provisionAttempted = useRef(false);
+  /** Increments while memberships are empty to drive re-poll */
+  const [orgPollTick, setOrgPollTick] = useState(0);
 
   const memberships = userMemberships?.data ?? [];
 
@@ -34,7 +39,7 @@ export function useEffectiveOrganization(): {
       activeOrgId && ids.has(activeOrgId)
         ? memberships.find((m) => m.organization.id === activeOrgId)
         : undefined;
-    const resolved = active ?? memberships[0];
+    const resolved = active ?? pickOldestMembership(memberships);
     if (!resolved?.organization) return null;
     return { id: resolved.organization.id, name: resolved.organization.name };
   }, [memberships, activeOrgId]);
@@ -46,70 +51,60 @@ export function useEffectiveOrganization(): {
   useEffect(() => {
     if (!authLoaded) return;
     if (!isSignedIn) {
-      provisionAttempted.current = false;
+      setOrgPollTick(0);
       setIsProvisioning(false);
       setProvisionError(false);
       return;
     }
     if (!orgListLoaded) return;
 
-    const run = async () => {
-      const list = userMemberships?.data ?? [];
-      const ids = new Set(list.map((m) => m.organization.id));
+    const list = userMemberships?.data ?? [];
+    const ids = new Set(list.map((m) => m.organization.id));
 
-      if (list.length > 0) {
-        setProvisionError(false);
-        // Session already has an active org that is one of our memberships — do not override (e.g. after accepting an invite).
-        if (activeOrgId && ids.has(activeOrgId)) {
-          return;
-        }
-        const defaultId = pickOldestOrganizationId(list);
-        if (defaultId && setActive && activeOrgId !== defaultId) {
+    if (list.length > 0) {
+      setOrgPollTick(0);
+      setIsProvisioning(false);
+      setProvisionError(false);
+      if (activeOrgId && ids.has(activeOrgId)) {
+        return;
+      }
+      const defaultId = pickOldestOrganizationId(list);
+      if (defaultId && setActive && activeOrgId !== defaultId) {
+        void (async () => {
           try {
             await setActive({ organization: defaultId });
           } catch {
             /* ignore */
           }
-        }
-        return;
+        })();
       }
+      return;
+    }
 
-      if (provisionAttempted.current) return;
-      provisionAttempted.current = true;
-      setProvisionError(false);
-      setIsProvisioning(true);
-      try {
-        const token = await getToken();
-        if (!token) {
-          provisionAttempted.current = false;
-          setProvisionError(true);
-          return;
-        }
-        const r = await ensureWorkspaceApi({ token });
-        if (r.org_id && setActive && activeOrgId !== r.org_id) {
-          await setActive({ organization: r.org_id });
-        }
-        await userMemberships?.revalidate?.();
-        setProvisionError(false);
-      } catch (e) {
-        console.warn("[useEffectiveOrganization] ensure workspace:", e);
-        provisionAttempted.current = false;
-        setProvisionError(true);
-      } finally {
-        setIsProvisioning(false);
-      }
-    };
+    // No memberships yet — Clerk should create the org; poll until it appears or time out.
+    if (orgPollTick >= ORG_POLL_MAX) {
+      setIsProvisioning(false);
+      setProvisionError(true);
+      return;
+    }
 
-    void run();
+    setIsProvisioning(true);
+    setProvisionError(false);
+    const delay = orgPollTick === 0 ? 100 : 500;
+    const t = setTimeout(() => {
+      void userMemberships?.revalidate?.();
+      setOrgPollTick((x) => x + 1);
+    }, delay);
+    return () => clearTimeout(t);
   }, [
     authLoaded,
     isSignedIn,
     orgListLoaded,
     membershipIdsKey,
     activeOrgId,
-    getToken,
     setActive,
     userMemberships?.revalidate,
+    orgPollTick,
   ]);
 
   return { organization, isLoaded: fullyLoaded, isProvisioning, provisionError };
