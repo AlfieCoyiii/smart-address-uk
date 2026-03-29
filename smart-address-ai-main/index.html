@@ -13,6 +13,9 @@
     <meta property="og:type" content="website" />
 
     <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Preload Turnstile so Clerk's loader can reuse it; helps with COEP/CORP and load-order issues (see clerk/javascript#2521). -->
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" crossorigin="anonymous" async></script>
   </head>
 
   <body>

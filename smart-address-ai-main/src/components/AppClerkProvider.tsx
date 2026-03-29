@@ -8,8 +8,8 @@ type Props = {
 
 /**
  * Minimal Clerk shell — no custom routerPush/routerReplace.
- * Let Clerk + the browser handle URL updates; embedded SignIn/SignUp use routing="hash"
- * so React Router stays on /sign-in or /sign-up without path fighting.
+ * Sign-in/up use `routing="hash"` so internal steps stay in the URL hash; the path stays
+ * `/sign-in` or `/sign-up`, which avoids SPA / hosting issues with nested Clerk paths.
  */
 export function AppClerkProvider({ children, publishableKey }: Props) {
   return (

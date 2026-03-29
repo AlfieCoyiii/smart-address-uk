@@ -2,19 +2,44 @@ import { useEffect } from "react";
 import { NavbarAuth } from "@/components/NavbarAuth";
 import Footer from "@/components/Footer";
 import Logo from "@/components/Logo";
-import { SignUp as ClerkSignUp, useAuth } from "@clerk/react";
+import {
+  ClerkLoaded,
+  ClerkLoading,
+  SignUp as ClerkSignUp,
+  useAuth,
+  useSession,
+  useSignUp,
+} from "@clerk/react";
 import { Link } from "react-router-dom";
 
-/** Same post-auth full reload as `Login.tsx` so the main navbar matches the session immediately. */
+/**
+ * Full reload to `/` after sign-up **fully** finishes (including org enrollment / session tasks).
+ * Do not redirect on `userId` alone — that fires mid-flow and blanks the page while Clerk still
+ * expects to render verification, Turnstile, or organization steps.
+ */
 const SignUp = () => {
-  const { userId } = useAuth();
+  const { userId, isLoaded: authLoaded } = useAuth();
+  const { session, isLoaded: sessionLoaded } = useSession();
+  const { signUp, isLoaded: signUpLoaded } = useSignUp();
 
   useEffect(() => {
+    if (!authLoaded || !sessionLoaded || !signUpLoaded) return;
     if (!userId) return;
+    if (signUp && signUp.status !== "complete") return;
+    if (session?.status === "pending" || session?.currentTask) return;
     window.location.replace(`${window.location.origin}/`);
-  }, [userId]);
+  }, [authLoaded, sessionLoaded, signUpLoaded, userId, signUp, session]);
 
-  if (userId) {
+  const redirecting =
+    authLoaded &&
+    sessionLoaded &&
+    signUpLoaded &&
+    userId &&
+    (!signUp || signUp.status === "complete") &&
+    session?.status !== "pending" &&
+    !session?.currentTask;
+
+  if (redirecting) {
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <NavbarAuth />
@@ -33,13 +58,17 @@ const SignUp = () => {
         <div className="w-full max-w-md flex flex-col items-center gap-8">
           <Logo />
           <div className="w-full flex justify-center [&_.cl-rootBox]:mx-auto [&_.cl-card]:shadow-lg">
-            <ClerkSignUp
-              routing="path"
-              path="/sign-up"
-              fallbackRedirectUrl="/"
-              signInUrl="/sign-in"
-              fallback={<p className="text-sm text-muted-foreground">Loading sign-up…</p>}
-            />
+            <ClerkLoading>
+              <p className="text-sm text-muted-foreground">Loading sign-up…</p>
+            </ClerkLoading>
+            <ClerkLoaded>
+              <ClerkSignUp
+                routing="hash"
+                fallbackRedirectUrl="/"
+                signInUrl="/sign-in"
+                fallback={<p className="text-sm text-muted-foreground">Loading sign-up…</p>}
+              />
+            </ClerkLoaded>
           </div>
           <p className="max-w-md text-center text-xs text-muted-foreground leading-relaxed px-2 -mt-4">
             By creating an account, you agree to our{" "}

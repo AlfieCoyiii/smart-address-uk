@@ -2,24 +2,43 @@ import { useEffect } from "react";
 import { NavbarAuth } from "@/components/NavbarAuth";
 import Footer from "@/components/Footer";
 import Logo from "@/components/Logo";
-import { SignIn, useAuth } from "@clerk/react";
+import {
+  ClerkLoaded,
+  ClerkLoading,
+  SignIn,
+  useAuth,
+  useSession,
+  useSignIn,
+} from "@clerk/react";
 import { Link } from "react-router-dom";
 
 /**
- * After sign-in, use a full document navigation to `/` so Clerk + navbar hydrate from the same
- * session (SPA-only `<Navigate />` left the header showing Log in until manual refresh).
- *
- * `routing="path"` keeps invitation links (`__clerk_ticket` in the query string) compatible with Clerk’s org-invite flow; `/sign-in/*` is routed in App.tsx.
+ * Same completion rules as `SignUp.tsx`: do not redirect on `userId` alone (2FA / session tasks).
+ * Hash routing keeps internal Clerk steps off the path so React Router and SPA hosting stay stable.
  */
 const Login = () => {
-  const { userId } = useAuth();
+  const { userId, isLoaded: authLoaded } = useAuth();
+  const { session, isLoaded: sessionLoaded } = useSession();
+  const { signIn, isLoaded: signInLoaded } = useSignIn();
 
   useEffect(() => {
+    if (!authLoaded || !sessionLoaded || !signInLoaded) return;
     if (!userId) return;
+    if (signIn && signIn.status !== "complete") return;
+    if (session?.status === "pending" || session?.currentTask) return;
     window.location.replace(`${window.location.origin}/`);
-  }, [userId]);
+  }, [authLoaded, sessionLoaded, signInLoaded, userId, signIn, session]);
 
-  if (userId) {
+  const redirecting =
+    authLoaded &&
+    sessionLoaded &&
+    signInLoaded &&
+    userId &&
+    (!signIn || signIn.status === "complete") &&
+    session?.status !== "pending" &&
+    !session?.currentTask;
+
+  if (redirecting) {
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <NavbarAuth />
@@ -38,13 +57,17 @@ const Login = () => {
         <div className="w-full max-w-md flex flex-col items-center gap-8">
           <Logo />
           <div className="w-full flex justify-center [&_.cl-rootBox]:mx-auto [&_.cl-card]:shadow-lg">
-            <SignIn
-              routing="path"
-              path="/sign-in"
-              fallbackRedirectUrl="/"
-              signUpUrl="/sign-up"
-              fallback={<p className="text-sm text-muted-foreground">Loading sign-in…</p>}
-            />
+            <ClerkLoading>
+              <p className="text-sm text-muted-foreground">Loading sign-in…</p>
+            </ClerkLoading>
+            <ClerkLoaded>
+              <SignIn
+                routing="hash"
+                fallbackRedirectUrl="/"
+                signUpUrl="/sign-up"
+                fallback={<p className="text-sm text-muted-foreground">Loading sign-in…</p>}
+              />
+            </ClerkLoaded>
           </div>
           <p className="max-w-md text-center text-xs text-muted-foreground leading-relaxed px-2">
             By continuing, you agree to our{" "}
