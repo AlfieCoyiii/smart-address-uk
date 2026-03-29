@@ -1,14 +1,29 @@
+import { useEffect } from "react";
 import { NavbarAuth } from "@/components/NavbarAuth";
+import Footer from "@/components/Footer";
 import Logo from "@/components/Logo";
 import { SignUp as ClerkSignUp, useAuth } from "@clerk/react";
-import { Link, Navigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 
-/** Same reset strategy as `Login.tsx`: no `isLoaded` gate; hash routing; `userId` redirect only. */
+/** Same post-auth full reload as `Login.tsx` so the main navbar matches the session immediately. */
 const SignUp = () => {
   const { userId } = useAuth();
 
+  useEffect(() => {
+    if (!userId) return;
+    window.location.replace(`${window.location.origin}/`);
+  }, [userId]);
+
   if (userId) {
-    return <Navigate to="/" replace />;
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <NavbarAuth />
+        <div className="flex-1 flex items-center justify-center px-4 pt-16 pb-16">
+          <p className="text-sm text-muted-foreground">Account ready — taking you home…</p>
+        </div>
+        <Footer />
+      </div>
+    );
   }
 
   return (
@@ -36,6 +51,7 @@ const SignUp = () => {
           </Link>
         </div>
       </div>
+      <Footer />
     </div>
   );
 };

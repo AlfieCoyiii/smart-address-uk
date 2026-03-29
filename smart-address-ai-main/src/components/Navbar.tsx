@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Show, useAuth } from "@clerk/react";
+import { useAuth } from "@clerk/react";
 import { NavbarSignedInSection } from "@/components/NavbarSignedInSection";
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/Logo";
@@ -30,10 +30,49 @@ function SignOutCTAs({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
+/** Avoid showing Log in / Get Started while Clerk is still hydrating — that looked like “signed out” when the session was already valid. */
+function AuthNavSkeleton({ className }: { className?: string }) {
+  return (
+    <div className={`flex items-center gap-3 ${className ?? ""}`}>
+      <div className="h-9 w-16 rounded-md bg-muted animate-pulse" aria-hidden />
+      <div className="h-9 w-28 rounded-md bg-muted animate-pulse" aria-hidden />
+    </div>
+  );
+}
+
+function NavbarAuthSlot({ mobile, onTeamNavigate }: { mobile?: boolean; onTeamNavigate?: () => void }) {
+  const { isLoaded, isSignedIn } = useAuth();
+
+  if (!isLoaded) {
+    return mobile ? (
+      <div className="flex flex-col gap-3 pt-2">
+        <AuthNavSkeleton className="flex-col items-stretch" />
+      </div>
+    ) : (
+      <AuthNavSkeleton />
+    );
+  }
+
+  if (isSignedIn) {
+    return mobile ? (
+      <NavbarSignedInSection mobile onTeamNavigate={onTeamNavigate} />
+    ) : (
+      <NavbarSignedInSection />
+    );
+  }
+
+  return mobile ? (
+    <div className="flex gap-3 pt-2">
+      <SignOutCTAs onNavigate={onTeamNavigate} />
+    </div>
+  ) : (
+    <SignOutCTAs />
+  );
+}
+
 const Navbar = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
-  const { isLoaded } = useAuth();
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-border/50">
@@ -55,18 +94,7 @@ const Navbar = () => {
         </div>
 
         <div className="hidden md:flex items-center gap-3">
-          {!isLoaded ? (
-            <SignOutCTAs />
-          ) : (
-            <>
-              <Show when="signed-out">
-                <SignOutCTAs />
-              </Show>
-              <Show when="signed-in">
-                <NavbarSignedInSection />
-              </Show>
-            </>
-          )}
+          <NavbarAuthSlot />
         </div>
 
         <button type="button" className="md:hidden text-foreground" onClick={() => setMobileOpen(!mobileOpen)}>
@@ -86,20 +114,7 @@ const Navbar = () => {
               {link.label}
             </Link>
           ))}
-          <div className="flex gap-3 pt-2">
-            {!isLoaded ? (
-              <SignOutCTAs onNavigate={() => setMobileOpen(false)} />
-            ) : (
-              <>
-                <Show when="signed-out">
-                  <SignOutCTAs onNavigate={() => setMobileOpen(false)} />
-                </Show>
-                <Show when="signed-in">
-                  <NavbarSignedInSection mobile onTeamNavigate={() => setMobileOpen(false)} />
-                </Show>
-              </>
-            )}
-          </div>
+          <NavbarAuthSlot mobile onTeamNavigate={() => setMobileOpen(false)} />
         </div>
       )}
     </nav>

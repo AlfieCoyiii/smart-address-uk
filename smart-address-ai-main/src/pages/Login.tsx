@@ -1,21 +1,34 @@
+import { useEffect } from "react";
 import { NavbarAuth } from "@/components/NavbarAuth";
 import Footer from "@/components/Footer";
 import Logo from "@/components/Logo";
 import { SignIn, useAuth } from "@clerk/react";
-import { Navigate, Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 /**
- * Do **not** gate this page on `useAuth().isLoaded`. If Clerk never reaches “loaded”
- * (blocked script, network, bad env), that pattern shows infinite “Loading” and never mounts `<SignIn />`.
- * Redirect only when we have a concrete `userId`.
+ * After sign-in, use a full document navigation to `/` so Clerk + navbar hydrate from the same
+ * session (SPA-only `<Navigate />` left the header showing Log in until manual refresh).
  *
- * `routing="hash"` keeps step URLs in the hash so React Router does not need `/sign-in/*` path segments.
+ * `routing="hash"` keeps Clerk steps in the hash; React Router stays on `/sign-in`.
  */
 const Login = () => {
   const { userId } = useAuth();
 
+  useEffect(() => {
+    if (!userId) return;
+    window.location.replace(`${window.location.origin}/`);
+  }, [userId]);
+
   if (userId) {
-    return <Navigate to="/" replace />;
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <NavbarAuth />
+        <div className="flex-1 flex items-center justify-center px-4 pt-16 pb-16">
+          <p className="text-sm text-muted-foreground">Signed in — taking you home…</p>
+        </div>
+        <Footer />
+      </div>
+    );
   }
 
   return (
