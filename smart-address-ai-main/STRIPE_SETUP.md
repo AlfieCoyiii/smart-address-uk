@@ -129,6 +129,18 @@ Checkout only shows **“Add promotion code”** if the API creates the session 
 
 **Many Stripe customers:** Older builds used `Customer.list` with a low limit and could **miss** your customer so the app stayed on “free”. New API code uses **`Customer.search(metadata['org_id'])`** when available.
 
+### Free trial — why you can’t find it on an existing price
+
+Stripe often **does not let you add or edit a trial on a price that already exists**; many fields are fixed at creation time. For **Stripe Checkout**, the supported approach is to pass **`subscription_data.trial_period_days`** when creating the Checkout Session.
+
+This API supports that via env (parser / Render):
+
+```bash
+STRIPE_CHECKOUT_TRIAL_PERIOD_DAYS=14
+```
+
+Use **`1`–`730`** days, or **remove / leave unset** for no trial (typical production). Redeploy the API after changing it. See Stripe: [Configure free trials (Checkout)](https://docs.stripe.com/payments/checkout/free-trials).
+
 ---
 
 ## 7. Production

@@ -1252,13 +1252,21 @@ def create_checkout_session(request: CreateCheckoutRequest):
             "true",
             "yes",
         )
+        # Free trial: Stripe Checkout does not let you “add trial” to an existing Price in the Dashboard.
+        # Use subscription_data.trial_period_days here (optional env). Omit or 0 = no trial.
+        sub_data: dict = {"metadata": {"org_id": request.org_id}}
+        trial_raw = (os.environ.get("STRIPE_CHECKOUT_TRIAL_PERIOD_DAYS") or "").strip()
+        if trial_raw.isdigit():
+            td = int(trial_raw)
+            if 1 <= td <= 730:
+                sub_data["trial_period_days"] = td
         session = stripe.checkout.Session.create(
             customer=customer_id,
             mode="subscription",
             line_items=line_items,
             success_url=request.success_url,
             cancel_url=request.cancel_url,
-            subscription_data={"metadata": {"org_id": request.org_id}},
+            subscription_data=sub_data,
             client_reference_id=request.org_id[:200],
             metadata={"org_id": request.org_id},
             **({"allow_promotion_codes": True} if allow_promo else {}),
