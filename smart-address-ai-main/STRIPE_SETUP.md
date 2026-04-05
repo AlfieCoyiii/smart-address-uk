@@ -125,6 +125,10 @@ Checkout only shows **“Add promotion code”** if the API creates the session 
 
 **Paid plan still shows as “free” after Checkout:** The API maps your Clerk **organization** to a Stripe **Customer** via `metadata.org_id`. You must be on the **same team** in the app that you used when subscribing. Also, Stripe often sets new subs to **`trialing`** (not only `active`); the parser API treats **`active`**, **`trialing`**, and **`past_due`** as entitled — redeploy the API if you’re on an older build that only checked `active`.
 
+**Stripe shows a different email than my Clerk login:** The **Customer** email in Stripe is usually whatever **Checkout / Apple Pay / Google Pay** supplied (often your **Apple ID** or wallet email), not your Smart Address sign-in address. **Billing is still tied to the Clerk workspace (org)** you had selected when you clicked Subscribe — check the **org switcher** and match **Client reference** / **metadata `org_id`** on the Stripe Checkout session to that org’s ID in Clerk.
+
+**Many Stripe customers:** Older builds used `Customer.list` with a low limit and could **miss** your customer so the app stayed on “free”. New API code uses **`Customer.search(metadata['org_id'])`** when available.
+
 ---
 
 ## 7. Production

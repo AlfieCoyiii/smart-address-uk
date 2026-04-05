@@ -799,6 +799,38 @@ def _stripe_customer_org_id(c: Any) -> str | None:
     return s or None
 
 
+def _customers_for_org_id(org_id: str) -> list:
+    """
+    Stripe Customers tagged with Clerk org_id in metadata.
+
+    Customer.list(limit=N) only returns the first page — if your account has many
+    customers, the paying customer can be missing and the app stays on 'free'.
+    Prefer Customer.search when the API supports it.
+    """
+    if not org_id or not _stripe_enabled():
+        return []
+    oid = str(org_id).strip()
+    if not oid:
+        return []
+    try:
+        if hasattr(stripe.Customer, "search"):
+            r = stripe.Customer.search(query=f"metadata['org_id']:'{oid}'", limit=100)
+            return list(r.data)
+    except Exception as e:
+        logging.getLogger(__name__).warning("Stripe Customer.search failed org_id=%s: %s", oid, e)
+    try:
+        customers = stripe.Customer.list(limit=1000)
+        return [c for c in customers.data if _stripe_customer_org_id(c) == oid]
+    except Exception:
+        return []
+
+
+def _stripe_customers_for_org_newest_first(org_id: str) -> list:
+    cs = _customers_for_org_id(org_id)
+    cs.sort(key=lambda c: int(getattr(c, "created", None) or 0), reverse=True)
+    return cs
+
+
 def _stripe_subscription_status(sub: Any) -> str | None:
     return getattr(sub, "status", None) or (sub.get("status") if isinstance(sub, dict) else None)
 
@@ -1016,12 +1048,15 @@ def _report_stripe_metered_overage(org_id: str, overage_price_id: str, quantity:
     if quantity <= 0 or not _stripe_enabled() or not stripe_secret_key:
         return
     try:
-        customers = stripe.Customer.list(limit=500)
-        matching = [c for c in customers.data if _stripe_customer_org_id(c) == org_id]
+        matching = _stripe_customers_for_org_newest_first(org_id)
         if not matching:
             print(f"[Stripe overage] No customer for org_id={org_id}")
             return
-        entitled = _list_entitled_subscriptions(matching[0].id)
+        entitled = []
+        for cust in matching:
+            entitled = _list_entitled_subscriptions(cust.id)
+            if entitled:
+                break
         if not entitled:
             return
         sub = entitled[0]
@@ -1068,15 +1103,14 @@ def _report_stripe_metered_overage(org_id: str, overage_price_id: str, quantity:
 
 
 def _org_has_active_subscription(org_id: str) -> bool:
-    """True if this org has an active Stripe subscription. Uses same limit as _org_paid_plan_info."""
+    """True if this org has an entitled Stripe subscription (active / trialing / past_due)."""
     if not _stripe_enabled():
         return False
     try:
-        customers = stripe.Customer.list(limit=500)
-        matching = [c for c in customers.data if _stripe_customer_org_id(c) == org_id]
-        if not matching:
-            return False
-        return len(_list_entitled_subscriptions(matching[0].id)) > 0
+        for cust in _stripe_customers_for_org_newest_first(org_id):
+            if _list_entitled_subscriptions(cust.id):
+                return True
+        return False
     except Exception:
         return False
 
@@ -1090,8 +1124,7 @@ def cancel_stripe_subscriptions_for_org(org_id: str) -> int:
         return 0
     cancelled = 0
     try:
-        customers = stripe.Customer.list(limit=500)
-        matching = [c for c in customers.data if _stripe_customer_org_id(c) == org_id]
+        matching = _stripe_customers_for_org_newest_first(org_id)
         for cust in matching:
             subs = stripe.Subscription.list(customer=cust.id, status="all", limit=100)
             for sub in subs.data:
@@ -1120,11 +1153,14 @@ def _org_paid_plan_info(org_id: str) -> tuple[int | None, str | None]:
     if not _stripe_enabled():
         return None, None
     try:
-        customers = stripe.Customer.list(limit=500)
-        matching = [c for c in customers.data if _stripe_customer_org_id(c) == org_id]
+        matching = _stripe_customers_for_org_newest_first(org_id)
         if not matching:
             return None, None
-        entitled = _list_entitled_subscriptions(matching[0].id)
+        entitled = []
+        for cust in matching:
+            entitled = _list_entitled_subscriptions(cust.id)
+            if entitled:
+                break
         if not entitled:
             return None, None
         sub_id = getattr(entitled[0], "id", None) or entitled[0].get("id")
@@ -1196,9 +1232,7 @@ def create_checkout_session(request: CreateCheckoutRequest):
     if not _stripe_enabled():
         raise HTTPException(status_code=503, detail="Stripe is not configured.")
     try:
-        # Find or create Stripe Customer for this org (Customer.list doesn't support metadata filter, so we list and filter)
-        customers = stripe.Customer.list(limit=100)
-        matching = [c for c in customers.data if _stripe_customer_org_id(c) == request.org_id]
+        matching = _stripe_customers_for_org_newest_first(request.org_id)
         if matching:
             customer_id = matching[0].id
         else:
@@ -1225,6 +1259,8 @@ def create_checkout_session(request: CreateCheckoutRequest):
             success_url=request.success_url,
             cancel_url=request.cancel_url,
             subscription_data={"metadata": {"org_id": request.org_id}},
+            client_reference_id=request.org_id[:200],
+            metadata={"org_id": request.org_id},
             **({"allow_promotion_codes": True} if allow_promo else {}),
         )
         return {"url": session.url}
@@ -1250,8 +1286,7 @@ def create_portal_session(request: CreatePortalRequest):
     if not _stripe_enabled():
         raise HTTPException(status_code=503, detail="Stripe is not configured.")
     try:
-        customers = stripe.Customer.list(limit=100)
-        matching = [c for c in customers.data if _stripe_customer_org_id(c) == request.org_id]
+        matching = _stripe_customers_for_org_newest_first(request.org_id)
         if not matching:
             raise HTTPException(status_code=404, detail="No subscription found for this team.")
         customer_id = matching[0].id
