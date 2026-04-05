@@ -1184,6 +1184,13 @@ def create_checkout_session(request: CreateCheckoutRequest):
         if overage_pid:
             line_items.append({"price": overage_pid})
 
+        # Show “Add promotion code” on Checkout (Stripe hides it unless this is True).
+        # Requires a Promotion code in Dashboard (Billing → Coupons), not only a raw Coupon with no code.
+        allow_promo = (os.environ.get("STRIPE_CHECKOUT_ALLOW_PROMOTION_CODES") or "true").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
         session = stripe.checkout.Session.create(
             customer=customer_id,
             mode="subscription",
@@ -1191,6 +1198,7 @@ def create_checkout_session(request: CreateCheckoutRequest):
             success_url=request.success_url,
             cancel_url=request.cancel_url,
             subscription_data={"metadata": {"org_id": request.org_id}},
+            **({"allow_promotion_codes": True} if allow_promo else {}),
         )
         return {"url": session.url}
     except stripe.StripeError as e:

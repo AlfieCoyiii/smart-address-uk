@@ -111,6 +111,20 @@ The Pricing page calls **`GET /stripe-status`** and shows whether the API sees *
 
 ---
 
+## Promotion codes (discounts) on Checkout
+
+Checkout only shows **“Add promotion code”** if the API creates the session with **`allow_promotion_codes`** enabled. This repo does that by default in **`POST /create-checkout-session`** (`parse_api.py`). Set **`STRIPE_CHECKOUT_ALLOW_PROMOTION_CODES=false`** on the parser API if you need to turn it off.
+
+**In Stripe Dashboard**
+
+1. **Billing** → **Coupons** → create a **coupon** (percent off, amount off, duration, which products it applies to — include the subscription price you sell).
+2. On that coupon, add a **promotion code** (the text customers type, e.g. `ENTERPRISEFREE`). A coupon alone without a promotion code cannot be entered on Checkout.
+3. Use **test** vs **live** mode consistently: the code must exist in the same mode as your API’s `STRIPE_SECRET_KEY`.
+
+**Note:** You cannot combine `allow_promotion_codes` with pre-applied `discounts` on the same session; this integration only uses `allow_promotion_codes`.
+
+---
+
 ## 7. Production
 
 - Use **live** Stripe secret keys in the backend and create **live** products/prices; put the live Price IDs in your frontend build env.
