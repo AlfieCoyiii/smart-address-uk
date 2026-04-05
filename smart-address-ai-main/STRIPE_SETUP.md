@@ -123,6 +123,8 @@ Checkout only shows **“Add promotion code”** if the API creates the session 
 
 **Note:** You cannot combine `allow_promotion_codes` with pre-applied `discounts` on the same session; this integration only uses `allow_promotion_codes`.
 
+**Paid plan still shows as “free” after Checkout:** The API maps your Clerk **organization** to a Stripe **Customer** via `metadata.org_id`. You must be on the **same team** in the app that you used when subscribing. Also, Stripe often sets new subs to **`trialing`** (not only `active`); the parser API treats **`active`**, **`trialing`**, and **`past_due`** as entitled — redeploy the API if you’re on an older build that only checked `active`.
+
 ---
 
 ## 7. Production

@@ -799,6 +799,31 @@ def _stripe_customer_org_id(c: Any) -> str | None:
     return s or None
 
 
+def _stripe_subscription_status(sub: Any) -> str | None:
+    return getattr(sub, "status", None) or (sub.get("status") if isinstance(sub, dict) else None)
+
+
+# Subscriptions that grant paid entitlements. Listing only status="active" misses
+# trialing (trials, some coupon flows) and past_due (grace) — users then still see "free".
+_ENTITLED_SUBSCRIPTION_STATUSES = frozenset({"active", "trialing", "past_due"})
+
+
+def _list_entitled_subscriptions(customer_id: str, limit: int = 100) -> list:
+    """Non-canceled subscriptions that should unlock plan caps (newest first)."""
+    if not _stripe_enabled():
+        return []
+    try:
+        subs = stripe.Subscription.list(customer=customer_id, status="all", limit=limit)
+        out = [s for s in subs.data if _stripe_subscription_status(s) in _ENTITLED_SUBSCRIPTION_STATUSES]
+        out.sort(
+            key=lambda s: int(getattr(s, "created", None) or (s.get("created") if isinstance(s, dict) else 0) or 0),
+            reverse=True,
+        )
+        return out
+    except Exception:
+        return []
+
+
 def _stripe_api_key_mode() -> str | None:
     """Infer test vs live from secret key prefix (never expose the key)."""
     k = (stripe_secret_key or "").strip()
@@ -996,10 +1021,10 @@ def _report_stripe_metered_overage(org_id: str, overage_price_id: str, quantity:
         if not matching:
             print(f"[Stripe overage] No customer for org_id={org_id}")
             return
-        subs = stripe.Subscription.list(customer=matching[0].id, status="active", limit=1)
-        if not subs.data:
+        entitled = _list_entitled_subscriptions(matching[0].id)
+        if not entitled:
             return
-        sub = subs.data[0]
+        sub = entitled[0]
         items_obj = getattr(sub, "items", None) or sub.get("items", {}) if isinstance(sub, dict) else None
         data = getattr(items_obj, "data", None) or (items_obj.get("data", []) if isinstance(items_obj, dict) else [])
         si_id = None
@@ -1051,8 +1076,7 @@ def _org_has_active_subscription(org_id: str) -> bool:
         matching = [c for c in customers.data if _stripe_customer_org_id(c) == org_id]
         if not matching:
             return False
-        subs = stripe.Subscription.list(customer=matching[0].id, status="active", limit=1)
-        return len(subs.data) > 0
+        return len(_list_entitled_subscriptions(matching[0].id)) > 0
     except Exception:
         return False
 
@@ -1069,8 +1093,11 @@ def cancel_stripe_subscriptions_for_org(org_id: str) -> int:
         customers = stripe.Customer.list(limit=500)
         matching = [c for c in customers.data if _stripe_customer_org_id(c) == org_id]
         for cust in matching:
-            subs = stripe.Subscription.list(customer=cust.id, status="active", limit=100)
+            subs = stripe.Subscription.list(customer=cust.id, status="all", limit=100)
             for sub in subs.data:
+                st = _stripe_subscription_status(sub)
+                if st in ("canceled", "incomplete_expired"):
+                    continue
                 sid = getattr(sub, "id", None) or (sub.get("id") if isinstance(sub, dict) else None)
                 if not sid:
                     continue
@@ -1097,10 +1124,10 @@ def _org_paid_plan_info(org_id: str) -> tuple[int | None, str | None]:
         matching = [c for c in customers.data if _stripe_customer_org_id(c) == org_id]
         if not matching:
             return None, None
-        subs = stripe.Subscription.list(customer=matching[0].id, status="active", limit=1)
-        if not subs.data:
+        entitled = _list_entitled_subscriptions(matching[0].id)
+        if not entitled:
             return None, None
-        sub_id = getattr(subs.data[0], "id", None) or subs.data[0].get("id")
+        sub_id = getattr(entitled[0], "id", None) or entitled[0].get("id")
         sub = stripe.Subscription.retrieve(
             sub_id,
             expand=["items.data.price.product"],
