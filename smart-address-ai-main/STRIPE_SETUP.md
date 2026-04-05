@@ -136,3 +136,18 @@ Checkout only shows **“Add promotion code”** if the API creates the session 
 - Use **live** Stripe secret keys in the backend and create **live** products/prices; put the live Price IDs in your frontend build env.
 - In Stripe Dashboard, set **Customer portal** branding and options (e.g. cancel subscription, update payment method).
 - **Overage**: implemented when `STRIPE_PRICE_OVERAGE_*` are set — see **STRIPE_OVERAGE.md**.
+
+### Customer portal: empty payment method, no invoices, can’t cancel
+
+**£0 / 100% coupon checkout:** Stripe often **does not save a payment method** on the Customer when nothing was charged. That is normal — there was no card to keep on file for recurring charges until the next invoice. You can still add a card in the portal if **Customers can update their payment methods** is enabled.
+
+**Missing cancel / invoices / billing details:** The portal only shows what you turn on in Stripe:
+
+1. Dashboard → **Settings** → **Billing** → **Customer portal** (or **Product catalog** → **Customer portal** depending on your Stripe UI).
+2. Under **Subscriptions**, ensure **Cancel subscriptions** (and any options you want) are **on**.
+3. Under **Invoices**, turn on **Invoice history** if you want past invoices and PDFs in the portal.
+4. Save, then open **Manage billing** from your app again.
+
+If you use a **custom portal configuration** (multiple configs), copy its **Configuration ID** (`bpc_…`) and set **`STRIPE_BILLING_PORTAL_CONFIGURATION_ID`** on the parser API so `create-portal-session` uses it (otherwise Stripe uses your **default** portal config).
+
+**£0 invoices:** Stripe may still create a **paid £0 invoice** for the subscription; check **Billing** → **Invoices** in the Dashboard. If invoice history is disabled in the portal, customers won’t see them there even if they exist.

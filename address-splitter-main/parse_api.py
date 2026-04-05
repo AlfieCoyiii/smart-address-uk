@@ -1290,10 +1290,11 @@ def create_portal_session(request: CreatePortalRequest):
         if not matching:
             raise HTTPException(status_code=404, detail="No subscription found for this team.")
         customer_id = matching[0].id
-        portal = stripe.billing_portal.Session.create(
-            customer=customer_id,
-            return_url=request.return_url,
-        )
+        portal_kw: dict = {"customer": customer_id, "return_url": request.return_url}
+        portal_cfg = (os.environ.get("STRIPE_BILLING_PORTAL_CONFIGURATION_ID") or "").strip()
+        if portal_cfg:
+            portal_kw["configuration"] = portal_cfg
+        portal = stripe.billing_portal.Session.create(**portal_kw)
         return {"url": portal.url}
     except stripe.StripeError as e:
         raise HTTPException(status_code=400, detail=str(e))
