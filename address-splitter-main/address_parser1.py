@@ -13,9 +13,13 @@ from address_parsing_core import (
     get_autocorrect_suggestions,
     get_town_from_outward,
     extract_flat_from_building,
+    join_tokens_preserving_commas,
+    sanitize_field_edges,
+    smart_title,
     check_town,
     check_county,
-    generate_test_csv
+    generate_test_csv,
+    sanitize_crf_street_name,
 )
 import sklearn_crfsuite
 from train_crf_address_ner import predict_address_fields, sent2features
@@ -224,19 +228,28 @@ def main():
                             elif tag.endswith('NUMBER'):
                                 number.append(token)
                         
-                        parts[1] = ' '.join(building)
-                        parts[2] = ' '.join(number)
-                        parts[3] = ' '.join(street)
-                        
+                        original_address = addresses[i] if i < len(addresses) else ""
+                        parts[1] = join_tokens_preserving_commas(original_address, building)
+                        parts[2] = join_tokens_preserving_commas(original_address, number)
+                        parts[3] = sanitize_field_edges(" ".join(street))
+
                         # Extract flat from building name
-                        flat_number, building_name = extract_flat_from_building(parts[1], parts[0])
+                        flat_number, building_name, street_number = extract_flat_from_building(
+                            parts[1],
+                            parts[0],
+                            parts[2],
+                            address_line=addresses[i] if i < len(addresses) else "",
+                        )
                         parts[0] = flat_number
                         parts[1] = building_name
+                        parts[2] = street_number
                         
                         # Blank out row if missing critical fields (town or postcode)
                         if (not parts[5] or not parts[6]) or not parts[4]:
                             parts = ['', '', '', '', '', '', '']  # Blank out the entire row
-                        
+                        else:
+                            parts[3] = sanitize_crf_street_name(parts[3], parts[4])
+
                         processed_results.append(parts)
                     
                     # Store in session state

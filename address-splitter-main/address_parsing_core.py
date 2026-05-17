@@ -25,7 +25,26 @@ with open(os.path.join(BASE_DIR, 'Data', 'do_not_autocorrect.csv'), newline='', 
     DO_NOT_AUTOCORRECT = set(row[0] for row in csv.reader(f) if row)
 
 manual_town_overrides = {"Rossendale", "Hull", "Sutton Coldfield", "Aberlour", "Cwmbran"}
-excluded_town_names = {"Trent", "Street", "Park", "Marsh", "Close", "Avon", "Kent", "Grove", "Lane"}
+excluded_town_names = {
+    "Trent", "Street", "Park", "Marsh", "Close", "Avon", "Kent", "Grove", "Lane",
+    "High Street", "High Street Green",
+}
+
+
+def _town_candidate_blocked_street_like(phrase_words):
+    """
+    Reject gazetteer town hits that look like thoroughfare names:
+    any token 'street' or 'road', or last token 'st' / 'rd' (abbreviations).
+    Last-token-only for st/rd avoids blocking places like 'St Helens'.
+    """
+    if not phrase_words:
+        return False
+    lowered = [w.strip(".,;:").lower() for w in phrase_words]
+    if "street" in lowered or "road" in lowered:
+        return True
+    if lowered[-1] in ("st", "rd"):
+        return True
+    return False
 
 with open(os.path.join(BASE_DIR, 'Pickles', 'valid_place_names.pkl'), "rb") as f:
     gb_places = pickle.load(f)
@@ -94,12 +113,109 @@ def smart_title(text):
             result.append(char)
     return ''.join(result).strip()
 
+
+def join_tokens_preserving_commas(original_address, tokens):
+    """Rejoin parsed tokens using the separators that appeared in the source address."""
+    if not tokens:
+        return ""
+    if len(tokens) == 1:
+        return tokens[0]
+
+    orig_lower = original_address.lower()
+    positions = []
+    cursor = 0
+    for token in tokens:
+        idx = orig_lower.find(token.lower(), cursor)
+        if idx == -1:
+            return " ".join(tokens)
+        end = idx + len(token)
+        positions.append((idx, end))
+        cursor = end
+
+    out = []
+    for i, (start, end) in enumerate(positions):
+        if i == 0:
+            out.append(original_address[start:end])
+        else:
+            prev_end = positions[i - 1][1]
+            out.append(original_address[prev_end:start] + original_address[start:end])
+    return "".join(out)
+
+
+def sanitize_field_edges(value):
+    """Strip leading/trailing commas and surrounding whitespace from structured output fields."""
+    if value is None:
+        return ""
+    return re.sub(r"^[\s,]+|[\s,]+$", "", str(value)).strip()
+
+
+# Remove characters not usually found in UK addresses; keep Unicode letters/digits (\w), space, and . , / - ' \ ( ) &.
+_ADDRESS_UNUSUAL_CHARS = re.compile(r"[^\w\s.,/'\\()&-]+", re.UNICODE)
+
+
+def strip_unusual_address_characters(s: str) -> str:
+    """Drop @, £, ^, %, etc.; keep common punctuation. Collapse spaces."""
+    if not s:
+        return s
+    t = _ADDRESS_UNUSUAL_CHARS.sub("", s)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def blank_street_number_if_no_alnum(street_number: str) -> str:
+    """Clear street number when it is only punctuation/symbols (e.g. lone '@')."""
+    s = (street_number or "").strip()
+    if not s:
+        return ""
+    if any(ch.isalnum() for ch in s):
+        return s
+    return ""
+
+
 def normalize_name(name):
     name = name.replace('-', ' ').replace("'", "").replace('.', '').strip()
     return ' '.join(name.split()).title()
 
 def normalize_substring(s):
     return re.sub(r'\s+', ' ', s.strip().lower())
+
+
+def clear_street_name_if_duplicate_of_town(street_name: str, town: str) -> str:
+    """Blank street when it matches town ignoring punctuation (see normalize_name)."""
+    s = (street_name or "").strip()
+    t = (town or "").strip()
+    if not s or not t:
+        return s
+    if normalize_name(s).casefold() == normalize_name(t).casefold():
+        return ""
+    return s
+
+
+# Post-CRF: single-token "street" that is only a bearing (e.g. "East" from "East Boldre").
+_STREET_NAME_COMPASS_SINGLE_TOKEN = frozenset({
+    "north", "south", "east", "west",
+    "northeast", "northwest", "southeast", "southwest",
+})
+
+
+def clear_street_name_if_single_token_compass_bearing(street_name: str) -> str:
+    """Blank street when it is exactly one token and a cardinal/intercardinal direction only."""
+    s = (street_name or "").strip()
+    if not s:
+        return s
+    parts = s.split()
+    if len(parts) != 1:
+        return s
+    key = re.sub(r"[-\s]+", "", parts[0].casefold())
+    if key in _STREET_NAME_COMPASS_SINGLE_TOKEN:
+        return ""
+    return s
+
+
+def sanitize_crf_street_name(street_name: str, town: str) -> str:
+    """Post-CRF street cleanup: duplicate of town, then disallowed single-token bearings."""
+    s = clear_street_name_if_duplicate_of_town(street_name, town)
+    return clear_street_name_if_single_token_compass_bearing(s)
+
 
 def get_autocorrect_county_suggestion(candidate, county_list, threshold=COUNTY_AUTOCORRECT_THRESHOLD):
     if candidate.title() in DO_NOT_AUTOCORRECT:
@@ -135,6 +251,7 @@ def get_autocorrect_suggestions(extracted_towns, valid_places, threshold=None, c
     return corrections
 
 def preview_split_address(address, outward, inward, place_names, counties):
+    address = strip_unusual_address_characters(address)
     cleaned_address = re.sub(postcode_pattern, '', address, flags=re.IGNORECASE)
     cleaned_address = re.sub(r'[,()]', '', cleaned_address).strip()
     cleaned_address = cleaned_address.replace('&', 'and')
@@ -154,7 +271,7 @@ def preview_split_address(address, outward, inward, place_names, counties):
     cleaned_address = re.sub(r'\b(Co\.?|County of)\b', '', cleaned_address, flags=re.IGNORECASE).strip()
     words = cleaned_address.replace('-', ' ').split()
     words = [w.replace('.', '').replace("'", "") for w in words]
-    cleaned_address = re.sub(r'[,.]', ' ', cleaned_address)
+    cleaned_address = re.sub(r',', ' ', cleaned_address)
     cleaned_address = re.sub(r'\s+', ' ', cleaned_address)
     words = cleaned_address.split()
     max_check = min(5, len(words))
@@ -190,7 +307,7 @@ def find_town(words, start_idx):
 
         # O(1) lookup
         if normalized_candidate in formatted_place_names:
-            if length == 1 and normalized_candidate in excluded_town_names:
+            if normalized_candidate in excluded_town_names:
                 continue
             return formatted_place_names[normalized_candidate]
 
@@ -199,11 +316,15 @@ def find_town(words, start_idx):
             extended_space = (candidate_phrase + " " + suffix.title()).replace("'", "").strip()
             normalized_space = normalize_name(extended_space)
             if normalized_space in formatted_place_names:
+                if normalized_space in excluded_town_names:
+                    continue
                 return formatted_place_names[normalized_space]
 
             extended_hyphen = (candidate_phrase + "-" + suffix.title()).replace("'", "").strip()
             normalized_hyphen = normalize_name(extended_hyphen)
             if normalized_hyphen in formatted_place_names:
+                if normalized_hyphen in excluded_town_names:
+                    continue
                 return formatted_place_names[normalized_hyphen]
 
     # If no town found, try removing suffix connectors
@@ -220,7 +341,7 @@ def find_town(words, start_idx):
     for length in range(max_check, 0, -1):
         phrase_words = words[start_idx - length : start_idx]
         base_candidate = ' '.join(phrase_words).title().strip()
-        if base_candidate in excluded_town_names:
+        if normalize_name(base_candidate) in excluded_town_names:
             continue
         for directional in directionals:
             combined = (directional + " " + base_candidate).strip()
@@ -354,8 +475,11 @@ def parse_address_multi(addresses, progress_callback=None, allow_autocorrect_lis
             # O(1) lookup
             if normalized_candidate in formatted_place_names:
                 _parse_debug_log(f"DEBUG find_town: MATCH FOUND! normalized_candidate='{normalized_candidate}' in formatted_place_names")
-                if length == 1 and normalized_candidate in excluded_town_names:
+                if normalized_candidate in excluded_town_names:
                     _parse_debug_log(f"DEBUG find_town: but skipping because it's in excluded_town_names")
+                    continue
+                if _town_candidate_blocked_street_like(phrase_words):
+                    _parse_debug_log("DEBUG find_town: skipping street/road/st/rd-shaped candidate")
                     continue
                 _parse_debug_log(f"DEBUG find_town: returning '{formatted_place_names[normalized_candidate]}'")
                 return formatted_place_names[normalized_candidate]
@@ -365,11 +489,19 @@ def parse_address_multi(addresses, progress_callback=None, allow_autocorrect_lis
                 extended_space = (candidate_phrase + " " + suffix.title()).replace("'", "").strip()
                 normalized_space = normalize_name(extended_space)
                 if normalized_space in formatted_place_names:
+                    if normalized_space in excluded_town_names:
+                        continue
+                    if _town_candidate_blocked_street_like(phrase_words):
+                        continue
                     return formatted_place_names[normalized_space]
 
                 extended_hyphen = (candidate_phrase + "-" + suffix.title()).replace("'", "").strip()
                 normalized_hyphen = normalize_name(extended_hyphen)
                 if normalized_hyphen in formatted_place_names:
+                    if normalized_hyphen in excluded_town_names:
+                        continue
+                    if _town_candidate_blocked_street_like(phrase_words):
+                        continue
                     return formatted_place_names[normalized_hyphen]
 
         # If no town found, try removing suffix connectors
@@ -386,12 +518,14 @@ def parse_address_multi(addresses, progress_callback=None, allow_autocorrect_lis
         for length in range(max_check, 0, -1):
             phrase_words = words[start_idx - length : start_idx]
             base_candidate = ' '.join(phrase_words).title().strip()
-            if base_candidate in excluded_town_names:
+            if normalize_name(base_candidate) in excluded_town_names:
                 continue
             for directional in directionals:
                 combined = (directional + " " + base_candidate).strip()
                 normalized_combined = normalize_name(combined)
                 if normalized_combined in formatted_place_names:
+                    if _town_candidate_blocked_street_like(combined.split()):
+                        continue
                     return formatted_place_names[normalized_combined]
 
         return ""
@@ -415,6 +549,7 @@ def parse_address_multi(addresses, progress_callback=None, allow_autocorrect_lis
             allow_autocorrect = allow_autocorrect_list[idx]
         # Replace double apostrophes with single apostrophe BEFORE normalizing
         address = address.replace("''", "'")
+        address = strip_unusual_address_characters(address)
 
         # Normalize: ensure every comma is followed by a space
         address = re.sub(r',(?=\S)', ', ', address)
@@ -739,7 +874,8 @@ def parse_address_multi(addresses, progress_callback=None, allow_autocorrect_lis
             cleaned = cleaned.replace(inward, '', 1)
         # County and town removal is handled by the word-by-word detection above
         # Don't remove county names globally as they might appear in street names
-        cleaned = re.sub(r'[,.]', ' ', cleaned)
+        # Commas → spaces for tokenisation; keep periods (e.g. unit "1.4") intact.
+        cleaned = re.sub(r',', ' ', cleaned)
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
         
         # Always try to extract REST output, even if town or postcode not found
@@ -803,20 +939,133 @@ def parse_address_multi(addresses, progress_callback=None, allow_autocorrect_lis
     output_str = "\n".join(output)
     return output, stats, unidentified_addresses, unidentified_postcodes, applied_autocorrects, unidentified_streets, rest_outputs, None, autocorrect_counts
 
-def extract_flat_from_building(building_name, flat_number):
-    """Whenever there is a word 'Flat' (or 'Flt'), extract the following number into flat_number and remove 'Flat X' from building name."""
-    if not building_name:
-        return flat_number, building_name
-    # Match "Flat" or "Flt" (optional dot) followed by space and a number/identifier, anywhere in the string
-    flat_pattern = r'\b(Flat|Flt)\.?\s+([A-Za-z0-9]+)\b'
-    match = re.search(flat_pattern, building_name.strip(), re.IGNORECASE)
-    if match:
-        extracted_flat = match.group(2)
-        # Remove the matched "Flat X" / "Flt X" from building name (strip and collapse spaces)
-        remainder = (building_name[:match.start()] + building_name[match.end():]).strip()
-        remainder = re.sub(r'\s+', ' ', remainder)
-        return extracted_flat, remainder
-    return flat_number, building_name
+_FLAT_UNIT_ID = re.compile(r"^[A-Za-z0-9]+(?:[/-][A-Za-z0-9]+)*$")
+_AMBIGUOUS_FLAT_UNIT_PREFIX = re.compile(r"^(?P<prefix>.+)\s+(Flat|Flt)\.?$", re.IGNORECASE)
+
+
+def _address_first_word_is_flat_keyword(address_line: str) -> bool:
+    """
+    True only when the first word of the address (after stripping postcode) is Flat/Flt.
+    Used to gate flat-from-building rules so 'Upper Flat 3 ...' keeps CRF output intact.
+    """
+    if not address_line or not str(address_line).strip():
+        return False
+    line = re.sub(postcode_pattern, "", str(address_line), flags=re.IGNORECASE).strip()
+    line = line.lstrip(" \t,;:")
+    if not line:
+        return False
+    first = line.split()[0]
+    first = re.sub(r"^[^\w]+|[^\w]+$", "", first).lower()
+    return first in ("flat", "flt")
+
+
+def _consolidate_ambiguous_flat_unit_prefix(flat_number, building_name, street_number):
+    """Keep number + flat + number together in building when the unit order is unclear."""
+    building_stripped = (building_name or "").strip()
+    unit_id = (street_number or "").strip()
+    if not building_stripped or not unit_id or not _FLAT_UNIT_ID.match(unit_id):
+        return flat_number, building_name, street_number
+
+    match = _AMBIGUOUS_FLAT_UNIT_PREFIX.match(building_stripped)
+    if not match or not re.search(r"\d", match.group("prefix")):
+        return flat_number, building_name, street_number
+
+    return "", f"{building_stripped} {unit_id}", ""
+
+
+def _promote_flat_label_from_street(flat_number, building_name, street_number):
+    """When CRF labels only the word Flat as building and the unit id as street number."""
+    building_stripped = (building_name or "").strip()
+    unit_id = (street_number or "").strip()
+    if building_stripped.lower() not in ("flat", "flt"):
+        return flat_number, building_name, street_number
+    if not unit_id or not _FLAT_UNIT_ID.match(unit_id):
+        return flat_number, building_name, street_number
+    if (flat_number or "").strip():
+        return flat_number, "", ""
+    return unit_id, "", ""
+
+
+# Single-token building labels that often pair with a unit number in the street-number field (CRF split).
+_LONE_UNIT_KEYWORDS = frozenset(
+    {
+        "apartment",
+        "apt",
+        "unit",
+        "suite",
+        "ste",
+        "room",
+        "rm",
+        "penthouse",
+        "studio",
+        "maisonette",
+        "duplex",
+        "level",
+        "lvl",
+    }
+)
+
+
+def merge_lone_unit_keyword_with_street_number(building_name, street_number, flat_number=""):
+    """
+    If building is exactly one word from _LONE_UNIT_KEYWORDS and street_number is non-empty,
+    join them into building and clear street_number (e.g. Apartment + 28 -> Apartment 28).
+    Multi-word buildings (e.g. Upper Floor Apartment) are unchanged.
+    Skipped when flat_number is already set (avoid conflicting unit fields).
+    """
+    if (flat_number or "").strip():
+        return building_name, street_number
+    b = (building_name or "").strip()
+    s = (street_number or "").strip()
+    if not b or not s:
+        return b, s
+    words = b.split()
+    if len(words) != 1:
+        return b, s
+    raw = words[0]
+    key = raw.rstrip(".,;:").lower()
+    if key not in _LONE_UNIT_KEYWORDS:
+        return b, s
+    return f"{raw} {s}", ""
+
+
+def extract_flat_from_building(building_name, flat_number, street_number="", address_line=None):
+    """
+    Extract flat identifiers from building text or from a Flat + street-number CRF split.
+
+    When address_line is set, these rules run only if the address starts with Flat/Flt
+    (first word after stripping postcode), so e.g. 'Upper Flat 3 ...' is left as CRF output.
+
+    When address_line is None, behaviour matches legacy callers (rules always apply).
+    """
+    apply_flat_rules = address_line is None or _address_first_word_is_flat_keyword(address_line)
+
+    if apply_flat_rules and building_name:
+        flat_pattern = r"\b(Flat|Flt)\.?\s+([A-Za-z0-9]+(?:[/-][A-Za-z0-9]+)*)\b"
+        match = re.search(flat_pattern, building_name.strip(), re.IGNORECASE)
+        if match:
+            extracted_flat = match.group(2)
+            remainder = (building_name[: match.start()] + building_name[match.end() :]).strip()
+            remainder = re.sub(r"\s+", " ", remainder)
+            flat_number = extracted_flat
+            building_name = remainder
+
+    if apply_flat_rules:
+        flat_number, building_name, street_number = _consolidate_ambiguous_flat_unit_prefix(
+            flat_number, building_name, street_number
+        )
+        flat_number, building_name, street_number = _promote_flat_label_from_street(
+            flat_number, building_name, street_number
+        )
+    building_name, street_number = merge_lone_unit_keyword_with_street_number(
+        building_name, street_number, flat_number
+    )
+    street_number = blank_street_number_if_no_alnum(street_number)
+    return (
+        sanitize_field_edges(flat_number),
+        sanitize_field_edges(building_name),
+        sanitize_field_edges(street_number),
+    )
 
 
 def check_town(town_name):
@@ -905,13 +1154,17 @@ def generate_test_csv(addresses, result_list, rest_outputs_local, crf_tags_list,
                     street.append(token)
                 elif tag.endswith('NUMBER'):
                     number.append(token)
-            parts[1] = ' '.join(building)
-            parts[2] = ' '.join(number)
-            parts[3] = ' '.join(street)
+            parts[1] = join_tokens_preserving_commas(address, building)
+            parts[2] = join_tokens_preserving_commas(address, number)
+            parts[3] = sanitize_field_edges(" ".join(street))
             # Extract flat from building name
-            flat_number, building_name = extract_flat_from_building(parts[1], parts[0])
+            flat_number, building_name, street_number = extract_flat_from_building(
+                parts[1], parts[0], parts[2], address_line=address
+            )
             parts[0] = flat_number
             parts[1] = building_name
+            parts[2] = street_number
+            parts[3] = sanitize_crf_street_name(parts[3], parts[4])
             writer.writerow({
                 'Original_Address': address,
                 'Final_Flat_No': parts[0],

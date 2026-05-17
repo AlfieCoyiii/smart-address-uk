@@ -2,7 +2,14 @@ import os
 from django.shortcuts import render, redirect, get_object_or_404
 import pickle
 import csv
-from address_parsing_core import parse_address_multi, extract_flat_from_building
+from address_parsing_core import (
+    extract_flat_from_building,
+    join_tokens_preserving_commas,
+    parse_address_multi,
+    sanitize_crf_street_name,
+    sanitize_field_edges,
+    smart_title,
+)
 from train_crf_address_ner import predict_address_fields
 from django.http import HttpResponse, HttpResponseRedirect
 from django.urls import reverse
@@ -342,7 +349,7 @@ def home(request):
                 parsed_result = parse_address_multi(input_lines, allow_autocorrect_list=allow_autocorrect_list)
                 result_list = parsed_result[0]
                 rest_outputs = parsed_result[6]
-                rest_outputs_normalized = [r.title() for r in rest_outputs]
+                rest_outputs_normalized = [smart_title(r) for r in rest_outputs]
                 crf_tags_list = predict_address_fields(rest_outputs_normalized, _CRF_MODEL)
                 processed = []
                 for i, line in enumerate(result_list):
@@ -359,12 +366,21 @@ def home(request):
                             street.append(token)
                         elif tag.endswith('NUMBER'):
                             number.append(token)
-                    flat_number, building_name = extract_flat_from_building(' '.join(building), parts[0])
+                    original_address = input_lines[i] if i < len(input_lines) else ""
+                    flat_number, building_name, street_number = extract_flat_from_building(
+                        join_tokens_preserving_commas(original_address, building),
+                        parts[0],
+                        join_tokens_preserving_commas(original_address, number),
+                        address_line=input_lines[i] if i < len(input_lines) else "",
+                    )
+                    street_name = sanitize_crf_street_name(
+                        sanitize_field_edges(" ".join(street)), parts[4]
+                    )
                     out = {
                         "flat_no": flat_number,
                         "building_name": building_name,
-                        "street_no": ' '.join(number),
-                        "street_name": ' '.join(street),
+                        "street_no": street_number,
+                        "street_name": street_name,
                         "town": parts[4],
                         "county": parts[7],
                         "country": parts[8],

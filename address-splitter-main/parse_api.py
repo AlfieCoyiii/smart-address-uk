@@ -72,7 +72,14 @@ except Exception:
 # Key set at startup in lifespan so .env is definitely loaded
 stripe_secret_key: str | None = None
 
-from address_parsing_core import parse_address_multi, extract_flat_from_building
+from address_parsing_core import (
+    extract_flat_from_building,
+    join_tokens_preserving_commas,
+    parse_address_multi,
+    sanitize_crf_street_name,
+    sanitize_field_edges,
+    smart_title,
+)
 from train_crf_address_ner import predict_address_fields
 
 # Load CRF model once at startup
@@ -246,7 +253,7 @@ def run_parser_pipeline(addresses: list[str]) -> list[dict]:
         allow_autocorrect_list=allow_autocorrect_list,
     )
 
-    rest_outputs_normalized = [rest.title() for rest in rest_outputs_local]
+    rest_outputs_normalized = [smart_title(rest) for rest in rest_outputs_local]
     crf_tags_list = predict_address_fields(rest_outputs_normalized, crf_model)
 
     results = []
@@ -266,13 +273,17 @@ def run_parser_pipeline(addresses: list[str]) -> list[dict]:
             elif tag.endswith("NUMBER"):
                 number.append(token)
 
-        parts[1] = " ".join(building)
-        parts[2] = " ".join(number)
-        parts[3] = " ".join(street)
+        original_address = addresses[i] if i < len(addresses) else ""
+        parts[1] = join_tokens_preserving_commas(original_address, building)
+        parts[2] = join_tokens_preserving_commas(original_address, number)
+        parts[3] = sanitize_field_edges(" ".join(street))
 
-        flat_number, building_name = extract_flat_from_building(parts[1], parts[0])
+        flat_number, building_name, street_number = extract_flat_from_building(
+            parts[1], parts[0], parts[2], address_line=addresses[i] if i < len(addresses) else ""
+        )
         parts[0] = flat_number
         parts[1] = building_name
+        parts[2] = street_number
 
         # Blank row if missing town or postcode (match address_parser1 behaviour)
         if (not parts[5] or not parts[6]) or not parts[4]:
@@ -281,6 +292,7 @@ def run_parser_pipeline(addresses: list[str]) -> list[dict]:
             flat_number, building_name = parts[0], parts[1]
             street_number, street_name = parts[2], parts[3]
             town, outward, inward = parts[4], parts[5], parts[6]
+            street_name = sanitize_crf_street_name(street_name, town)
 
         results.append({
             "flatNumber": flat_number or "",
