@@ -1,11 +1,15 @@
 export interface ParsedAddress {
   flatNumber: string;
   buildingName: string;
+  /** Flat and building merged with source punctuation (from API when available). */
+  flatAndBuilding?: string;
   streetNumber: string;
   streetName: string;
   town: string;
   postcodeStart: string;
   postcodeEnd: string;
+  /** Flat + building + street with source punctuation (from API when available). */
+  addressLine?: string;
 }
 
 export const SAMPLE_ADDRESSES = [
@@ -83,6 +87,30 @@ export function parseAddress(raw: string): ParsedAddress {
   // Remaining parts are building name
   if (parts.length > 0) {
     result.buildingName = parts.join(", ");
+  }
+
+  let flatPart = "";
+  if (result.flatNumber) {
+    const flatPhrase = raw.match(
+      new RegExp(
+        `\\b(Flat|Flt|Apartment|Apt|Suite|Unit)\\.?\\s+${result.flatNumber.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+        "i",
+      ),
+    )?.[0];
+    flatPart = flatPhrase ?? `Flat ${result.flatNumber}`;
+  }
+
+  if (flatPart || result.buildingName) {
+    result.flatAndBuilding = [flatPart, result.buildingName].filter(Boolean).join(", ");
+  }
+
+  const street =
+    result.streetNumber && result.streetName
+      ? `${result.streetNumber} ${result.streetName}`
+      : result.streetName || result.streetNumber;
+  const addressParts = [flatPart, result.buildingName, street].filter(Boolean);
+  if (addressParts.length) {
+    result.addressLine = addressParts.join(", ");
   }
 
   return result;

@@ -31,13 +31,23 @@ function validatePublishableKey(): "ok" | "missing" | "secret_key" | "bad_format
 }
 
 const keyStatus = validatePublishableKey();
+const clerkStub = typeof __CLERK_STUB__ !== "undefined" && __CLERK_STUB__;
 
 // Open DevTools → Console on the live site; should match latest Git short SHA after a good deploy.
 console.info("[SmartAddressUK] deploy revision:", __DEPLOY_REVISION__);
+if (clerkStub) {
+  console.info(
+    "[SmartAddressUK] Local dev: Clerk bypassed (no key). Homepage + address splitter work; sign-in pages are stubbed."
+  );
+}
 
 createRoot(document.getElementById("root")!).render(
   <BrowserRouter>
-    {keyStatus !== "ok" ? (
+    {clerkStub ? (
+      <RootErrorBoundary>
+        <App />
+      </RootErrorBoundary>
+    ) : keyStatus !== "ok" ? (
       <ClerkKeyHelp reason={keyStatus} />
     ) : (
       <RootErrorBoundary>

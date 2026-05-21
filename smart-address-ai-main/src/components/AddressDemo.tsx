@@ -2,16 +2,26 @@ import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@clerk/react";
 import { useEffectiveOrganization } from "@/hooks/useEffectiveOrganization";
-import { parseAddress, COLUMN_LABELS, type ColumnKey, type ParsedAddress } from "@/lib/addressParser";
+import { parseAddress, type ParsedAddress } from "@/lib/addressParser";
 import { parseAddressesApi, type UnsplitEntry } from "@/lib/addressApi";
+import {
+  columnsForLayout,
+  tableBodySegmentsForLayout,
+  DEFAULT_OUTPUT_LAYOUT,
+  enrichParsedAddress,
+  labelForDisplayColumn,
+  valueForDisplayColumn,
+  type DisplayColumn,
+  type OutputLayoutConfig,
+} from "@/lib/outputLayout";
+import { LayoutModeSwitch } from "@/components/LayoutModeSwitch";
+import { OutputColumnsHeaderRow } from "@/components/EditableOutputColumns";
 import { requestUsageRefresh } from "@/lib/usageEvents";
 import { Button } from "@/components/ui/button";
 import { Copy, Download, Check, Loader2, AlertCircle, Monitor } from "lucide-react";
 import { toast } from "sonner";
 
 const ANONYMOUS_MAX = 1;
-
-const ALL_COLUMNS: ColumnKey[] = ["flatNumber", "buildingName", "streetNumber", "streetName", "town", "postcodeStart", "postcodeEnd"];
 
 const AddressDemo = () => {
   const { getToken, isSignedIn } = useAuth();
@@ -21,24 +31,22 @@ const AddressDemo = () => {
   const [unsplit, setUnsplit] = useState<UnsplitEntry[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [activeColumns, setActiveColumns] = useState<Set<ColumnKey>>(new Set(ALL_COLUMNS));
-  const [combinePostcode, setCombinePostcode] = useState(false);
+  const [outputLayout, setOutputLayout] = useState<OutputLayoutConfig>(DEFAULT_OUTPUT_LAYOUT);
+  const [inputLineByResultIndex, setInputLineByResultIndex] = useState<Record<number, string>>({});
 
   const isAnonymous = !isSignedIn;
   const lines = useMemo(() => input.trim().split("\n").filter(Boolean), [input]);
   const effectiveLines = isAnonymous ? lines.slice(0, ANONYMOUS_MAX) : lines;
   const overLimitAnonymous = isAnonymous && lines.length > ANONYMOUS_MAX;
 
-  const visibleColumns = useMemo(() => {
-    let cols = ALL_COLUMNS.filter(c => activeColumns.has(c));
-    if (combinePostcode) {
-      cols = cols.filter(c => c !== "postcodeStart" && c !== "postcodeEnd");
-      if (activeColumns.has("postcodeStart") || activeColumns.has("postcodeEnd")) {
-        cols.push("postcodeStart" as ColumnKey); // we'll render combined
-      }
-    }
-    return cols;
-  }, [activeColumns, combinePostcode]);
+  const visibleColumns = useMemo(
+    () => columnsForLayout(outputLayout),
+    [outputLayout],
+  );
+  const bodySegments = useMemo(
+    () => tableBodySegmentsForLayout(outputLayout),
+    [outputLayout],
+  );
 
   const handleSplit = async () => {
     if (lines.length === 0) return;
@@ -53,14 +61,12 @@ const AddressDemo = () => {
     setIsProcessing(true);
     setUnsplit([]);
     try {
-      // Fresh token so backend can verify (skipCache in case of stale/empty)
       const token = isSignedIn ? await getToken({ skipCache: true }) : null;
       if (isSignedIn && !token) {
         toast.error("Session token not available. Try signing out and back in.");
         setIsProcessing(false);
         return;
       }
-      // When no token, only send first address so backend and UI never see more than 1
       const addressesToSend =
         !token && lines.length > ANONYMOUS_MAX
           ? lines.slice(0, ANONYMOUS_MAX)
@@ -70,7 +76,12 @@ const AddressDemo = () => {
         token: token ?? undefined,
         orgId: organization?.id ?? undefined,
       });
-      setResults(apiResults);
+      const lineMap: Record<number, string> = {};
+      addressesToSend.forEach((addr, idx) => {
+        lineMap[idx] = addr;
+      });
+      setInputLineByResultIndex(lineMap);
+      setResults(apiResults.map((row, idx) => enrichParsedAddress(row, lineMap[idx])));
       setUnsplit(apiUnsplit);
       if (isSignedIn && organization?.id) {
         requestUsageRefresh();
@@ -80,7 +91,12 @@ const AddressDemo = () => {
       const fallbackLines =
         lines.length > ANONYMOUS_MAX ? lines.slice(0, ANONYMOUS_MAX) : lines;
       const fallbackResults = fallbackLines.map(parseAddress);
-      setResults(fallbackResults);
+      const lineMap: Record<number, string> = {};
+      fallbackLines.forEach((addr, idx) => {
+        lineMap[idx] = addr;
+      });
+      setInputLineByResultIndex(lineMap);
+      setResults(fallbackResults.map((row, idx) => enrichParsedAddress(row, lineMap[idx])));
       const fallbackUnsplit: UnsplitEntry[] = fallbackResults
         .map((r, i) => ({ line: i + 1, address: fallbackLines[i], row: r }))
         .filter(({ row }) => !(row.postcodeStart || row.postcodeEnd))
@@ -91,30 +107,17 @@ const AddressDemo = () => {
     }
   };
 
-  const getRowValue = (row: ParsedAddress, col: ColumnKey): string => {
-    if (combinePostcode && col === "postcodeStart") {
-      return [row.postcodeStart, row.postcodeEnd].filter(Boolean).join(" ");
-    }
-    return row[col];
-  };
+  const getRowValue = (row: ParsedAddress, col: DisplayColumn, rowIndex: number): string =>
+    valueForDisplayColumn(row, col, outputLayout, inputLineByResultIndex[rowIndex]);
 
-  const getColumnLabel = (col: ColumnKey): string => {
-    if (combinePostcode && col === "postcodeStart") return "Postcode";
-    return COLUMN_LABELS[col];
-  };
-
-  const toggleColumn = (col: ColumnKey) => {
-    setActiveColumns(prev => {
-      const next = new Set(prev);
-      if (next.has(col)) next.delete(col);
-      else next.add(col);
-      return next;
-    });
-  };
+  const getColumnLabel = (col: DisplayColumn): string =>
+    labelForDisplayColumn(col, outputLayout);
 
   const copyToClipboard = () => {
     const header = visibleColumns.map(c => getColumnLabel(c)).join("\t");
-    const rows = results.map(r => visibleColumns.map(c => getRowValue(r, c)).join("\t"));
+    const rows = results.map((r, i) =>
+      visibleColumns.map((c) => getRowValue(r, c, i)).join("\t"),
+    );
     navigator.clipboard.writeText([header, ...rows].join("\n"));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -122,8 +125,8 @@ const AddressDemo = () => {
 
   const downloadCSV = () => {
     const header = visibleColumns.map(c => getColumnLabel(c)).join(",");
-    const rows = results.map(r =>
-      visibleColumns.map(c => `"${getRowValue(r, c)}"`).join(",")
+    const rows = results.map((r, i) =>
+      visibleColumns.map((c) => `"${getRowValue(r, c, i).replace(/"/g, '""')}"`).join(","),
     );
     const csv = [header, ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -163,7 +166,6 @@ const AddressDemo = () => {
           </p>
         </motion.div>
 
-        {/* Mobile / small screens: parser unavailable — rest of site still works */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -190,7 +192,6 @@ const AddressDemo = () => {
           transition={{ duration: 0.5, delay: 0.1 }}
           className="max-w-5xl mx-auto hidden md:block"
         >
-          {/* Input area */}
           <div className="rounded-xl border border-border bg-card p-6">
             <div className="mb-3">
               <label className="text-sm font-medium text-foreground">Paste your addresses</label>
@@ -206,7 +207,8 @@ const AddressDemo = () => {
                 Sign in to split more than {ANONYMOUS_MAX} address at a time.
               </p>
             )}
-            <div className="mt-4 flex items-center gap-3">
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
               <Button
                 variant="hero"
                 onClick={handleSplit}
@@ -229,119 +231,103 @@ const AddressDemo = () => {
             </div>
           </div>
 
-          {/* Results */}
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={copyToClipboard}
+              disabled={results.length === 0}
+            >
+              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied ? "Copied!" : "Copy to Clipboard"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={downloadCSV}
+              disabled={results.length === 0}
+            >
+              <Download className="w-3.5 h-3.5" />
+              Download CSV
+            </Button>
+            <div className="ml-auto flex flex-wrap items-center gap-3">
+              <LayoutModeSwitch layout={outputLayout} onChange={setOutputLayout} />
+              <span className="text-xs text-muted-foreground">
+                {results.length > 0
+                  ? `${results.length} results · ${visibleColumns.length} columns`
+                  : "No results yet"}
+              </span>
+            </div>
+          </div>
+
           <AnimatePresence>
-            {results.length > 0 && (
+            {unsplit.length > 0 && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.4 }}
-                className="mt-6"
+                transition={{ duration: 0.3 }}
+                className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/5 p-4"
               >
-                {/* Column controls */}
-                <div className="rounded-xl border border-border bg-card p-4 mb-4">
-                  <div className="flex flex-wrap items-center gap-4">
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Columns:</span>
-                    {ALL_COLUMNS.map(col => (
-                      <label key={col} className="flex items-center gap-1.5 text-xs cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={activeColumns.has(col)}
-                          onChange={() => toggleColumn(col)}
-                          className="rounded border-border text-primary focus:ring-primary/50"
-                        />
-                        <span className="text-foreground">{COLUMN_LABELS[col]}</span>
-                      </label>
-                    ))}
-                    <div className="ml-auto flex items-center gap-1.5">
-                      <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={combinePostcode}
-                          onChange={() => setCombinePostcode(!combinePostcode)}
-                          className="rounded border-border text-primary focus:ring-primary/50"
-                        />
-                        <span className="text-foreground">Combine Postcode</span>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-
-                {unsplit.length > 0 && (
-                  <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-4 mb-4">
-                    <div className="flex items-start gap-2">
-                      <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-foreground">
-                          {unsplit.length} address{unsplit.length === 1 ? "" : "es"} could not be split — your credits have been returned
-                        </p>
-                        <ul className="mt-2 space-y-1 text-sm text-muted-foreground font-mono max-h-40 overflow-y-auto">
-                          {unsplit.map(({ line, address }) => (
-                            <li key={line}>
-                              <span className="text-amber-600 dark:text-amber-400 font-medium">Line {line}:</span>{" "}
-                              <span className="break-all">{address}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Actions bar */}
-                <div className="flex items-center gap-3 mb-4">
-                  <Button variant="outline" size="sm" onClick={copyToClipboard}>
-                    {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                    {copied ? "Copied!" : "Copy to Clipboard"}
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={downloadCSV}>
-                    <Download className="w-3.5 h-3.5" />
-                    Download CSV
-                  </Button>
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    {results.length} results · {visibleColumns.length} columns
-                  </span>
-                </div>
-
-                {/* Results table */}
-                <div className="rounded-xl border border-border bg-card overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-border bg-muted/30">
-                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-10">#</th>
-                          {visibleColumns.map(col => (
-                            <th key={col} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">
-                              {getColumnLabel(col)}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {results.map((row, i) => (
-                          <motion.tr
-                            key={i}
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: i * 0.03 }}
-                            className="border-b border-border/50 hover:bg-muted/20 transition-colors"
-                          >
-                            <td className="px-4 py-2.5 text-xs text-muted-foreground">{i + 1}</td>
-                            {visibleColumns.map(col => (
-                              <td key={col} className="px-4 py-2.5 text-foreground whitespace-nowrap font-mono text-xs">
-                                {getRowValue(row, col) || <span className="text-muted-foreground/30">—</span>}
-                              </td>
-                            ))}
-                          </motion.tr>
-                        ))}
-                      </tbody>
-                    </table>
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">
+                      {unsplit.length} address{unsplit.length === 1 ? "" : "es"} could not be split — your credits have been returned
+                    </p>
+                    <ul className="mt-2 space-y-1 text-sm text-muted-foreground font-mono max-h-40 overflow-y-auto">
+                      {unsplit.map(({ line, address }) => (
+                        <li key={line}>
+                          <span className="text-amber-600 dark:text-amber-400 font-medium">Line {line}:</span>{" "}
+                          <span className="break-all">{address}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
+
+          <div className="mt-4 rounded-xl border border-border bg-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <OutputColumnsHeaderRow layout={outputLayout} onChange={setOutputLayout} />
+                <tbody>
+                  {results.map((row, i) => (
+                    <tr
+                      key={i}
+                      className="border-b border-border/50 hover:bg-muted/20 transition-colors"
+                    >
+                      <td className="px-4 py-2.5 text-xs text-muted-foreground">{i + 1}</td>
+                      {bodySegments.map((segment, segIndex) => {
+                        if (segment.kind === "join-spacer") {
+                          return (
+                            <td
+                              key={`join-spacer-${segIndex}`}
+                              className="w-10 px-1"
+                              aria-hidden
+                            />
+                          );
+                        }
+                        const col = segment.col;
+                        return (
+                          <td
+                            key={col}
+                            className="px-4 py-2.5 text-foreground whitespace-nowrap font-mono text-xs"
+                          >
+                            {getRowValue(row, col, i) || (
+                              <span className="text-muted-foreground/30">—</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </motion.div>
       </div>
     </section>

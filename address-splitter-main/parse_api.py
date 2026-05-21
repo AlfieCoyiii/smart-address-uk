@@ -73,6 +73,8 @@ except Exception:
 stripe_secret_key: str | None = None
 
 from address_parsing_core import (
+    build_address_line,
+    build_flat_and_building_line,
     extract_flat_from_building,
     join_tokens_preserving_commas,
     parse_address_multi,
@@ -210,11 +212,13 @@ class ParseRequest(BaseModel):
 class ParsedAddressResponse(BaseModel):
     flatNumber: str
     buildingName: str
+    flatAndBuilding: str = ""
     streetNumber: str
     streetName: str
     town: str
     postcodeStart: str
     postcodeEnd: str
+    addressLine: str = ""
 
 
 class UnsplitEntry(BaseModel):
@@ -279,7 +283,11 @@ def run_parser_pipeline(addresses: list[str]) -> list[dict]:
         parts[3] = sanitize_field_edges(" ".join(street))
 
         flat_number, building_name, street_number = extract_flat_from_building(
-            parts[1], parts[0], parts[2], address_line=addresses[i] if i < len(addresses) else ""
+            parts[1],
+            parts[0],
+            parts[2],
+            address_line=addresses[i] if i < len(addresses) else "",
+            combine_flat_with_building=False,
         )
         parts[0] = flat_number
         parts[1] = building_name
@@ -288,20 +296,34 @@ def run_parser_pipeline(addresses: list[str]) -> list[dict]:
         # Blank row if missing town or postcode (match address_parser1 behaviour)
         if (not parts[5] or not parts[6]) or not parts[4]:
             flat_number = building_name = street_number = street_name = town = outward = inward = ""
+            flat_and_building = ""
         else:
             flat_number, building_name = parts[0], parts[1]
             street_number, street_name = parts[2], parts[3]
             town, outward, inward = parts[4], parts[5], parts[6]
             street_name = sanitize_crf_street_name(street_name, town)
+            flat_and_building = build_flat_and_building_line(
+                original_address,
+                flat_number or "",
+                building_name or "",
+            )
 
         results.append({
             "flatNumber": flat_number or "",
             "buildingName": building_name or "",
+            "flatAndBuilding": flat_and_building or "",
             "streetNumber": street_number or "",
             "streetName": street_name or "",
             "town": town or "",
             "postcodeStart": outward or "",
             "postcodeEnd": inward or "",
+            "addressLine": build_address_line(
+                original_address,
+                flat_number or "",
+                building_name or "",
+                street_number or "",
+                street_name or "",
+            ),
         })
     return results
 
@@ -358,11 +380,13 @@ def merge_parse_results(addresses: list[str]) -> tuple[list[dict], list[dict], i
     empty = {
         "flatNumber": "",
         "buildingName": "",
+        "flatAndBuilding": "",
         "streetNumber": "",
         "streetName": "",
         "town": "",
         "postcodeStart": "",
         "postcodeEnd": "",
+        "addressLine": "",
     }
     results: list[dict] = [dict(empty) for _ in range(n)]
     unsplit: list[dict] = []

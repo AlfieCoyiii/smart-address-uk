@@ -1029,15 +1029,99 @@ def merge_lone_unit_keyword_with_street_number(building_name, street_number, fla
     return f"{raw} {s}", ""
 
 
-def extract_flat_from_building(building_name, flat_number, street_number="", address_line=None):
+def flat_phrase_from_original(original_address: str, flat_number: str) -> str:
+    """Return a Flat 3-style label from the source when flat_number is only the unit id."""
+    flat_number = (flat_number or "").strip()
+    if not flat_number:
+        return ""
+    if re.match(r"^(flat|flt|apartment|apt|suite|unit)\b", flat_number, re.IGNORECASE):
+        return flat_number
+    esc = re.escape(flat_number)
+    match = re.search(
+        rf"\b(Flat|Flt|Apartment|Apt|Suite|Unit)\.?\s+{esc}\b",
+        original_address,
+        re.IGNORECASE,
+    )
+    return match.group(0) if match else ""
+
+
+def build_flat_and_building_line(
+    original_address: str,
+    flat_number: str,
+    building_name: str,
+) -> str:
+    """Merge flat + building preserving Flat label and commas from the source address."""
+    flat_number = (flat_number or "").strip()
+    building_name = (building_name or "").strip()
+    if not flat_number and not building_name:
+        return ""
+    if not flat_number:
+        return sanitize_field_edges(building_name)
+    if not building_name:
+        phrase = flat_phrase_from_original(original_address, flat_number) or flat_number
+        return sanitize_field_edges(phrase)
+
+    flat_phrase = flat_phrase_from_original(original_address, flat_number)
+    tokens: list[str] = []
+    if flat_phrase:
+        tokens.extend(flat_phrase.split())
+    else:
+        tokens.extend(flat_number.split())
+    tokens.extend(building_name.split())
+    return sanitize_field_edges(join_tokens_preserving_commas(original_address, tokens))
+
+
+def build_address_line(
+    original_address: str,
+    flat_number: str,
+    building_name: str,
+    street_number: str,
+    street_name: str,
+) -> str:
+    """Merge flat/building/street fields preserving commas from the source address."""
+    tokens: list[str] = []
+    flat_phrase = flat_phrase_from_original(original_address, flat_number)
+    if flat_phrase:
+        tokens.extend(flat_phrase.split())
+    elif (flat_number or "").strip():
+        tokens.extend(flat_number.split())
+    for part in (building_name, street_number, street_name):
+        p = (part or "").strip()
+        if p:
+            tokens.extend(p.split())
+    if not tokens:
+        return ""
+    return sanitize_field_edges(join_tokens_preserving_commas(original_address, tokens))
+
+
+def extract_flat_from_building(
+    building_name,
+    flat_number,
+    street_number="",
+    address_line=None,
+    combine_flat_with_building: bool = False,
+):
     """
     Extract flat identifiers from building text or from a Flat + street-number CRF split.
+
+    When combine_flat_with_building is True, flat extraction is skipped (Flat stays in building).
 
     When address_line is set, these rules run only if the address starts with Flat/Flt
     (first word after stripping postcode), so e.g. 'Upper Flat 3 ...' is left as CRF output.
 
     When address_line is None, behaviour matches legacy callers (rules always apply).
     """
+    if combine_flat_with_building:
+        building_name, street_number = merge_lone_unit_keyword_with_street_number(
+            building_name, street_number, flat_number
+        )
+        street_number = blank_street_number_if_no_alnum(street_number)
+        return (
+            sanitize_field_edges(flat_number),
+            sanitize_field_edges(building_name),
+            sanitize_field_edges(street_number),
+        )
+
     apply_flat_rules = address_line is None or _address_first_word_is_flat_keyword(address_line)
 
     if apply_flat_rules and building_name:
