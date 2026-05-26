@@ -25,7 +25,7 @@ const HowItWorks = () => {
                 {
                   icon: Split,
                   title: "Send your data",
-                  description: "Upload or paste UK address lines — one per line, up to 3,000 per request. Messy formatting, extra text, and odd punctuation are fine. We use pattern recognition to extract the parts that matter.",
+                  description: "Upload or paste UK address lines — one per line, up to 10,000 per request. Messy formatting, extra text, and odd punctuation are fine. We use pattern recognition to extract the parts that matter.",
                 },
                 {
                   icon: Cpu,

@@ -58,7 +58,7 @@ const HeroSection = () => {
           >
             <span className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-accent" />
-              Up to 3,000 per request
+              Up to 10,000 per request
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-accent" />

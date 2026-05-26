@@ -26,7 +26,7 @@ const About = () => {
 
             <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-6">
               {[
-                { icon: Zap, title: "Speed", desc: "Process thousands of addresses in seconds. Batch up to 3,000 per request." },
+                { icon: Zap, title: "Speed", desc: "Process thousands of addresses in seconds. Batch up to 10,000 per request." },
                 { icon: Target, title: "Accuracy", desc: "Pattern-based parsing built for UK formats. Handles real-world messiness." },
                 { icon: Shield, title: "Trust", desc: "Your data is never stored. We process and return. GDPR compliant, enterprise-ready." },
               ].map((item, i) => (
