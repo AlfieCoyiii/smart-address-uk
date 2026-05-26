@@ -546,6 +546,14 @@
           <textarea id="address" name="address" rows="2"
             class="form-control"
             style="font-size:0.98em; font-family:monospace; white-space:pre; overflow-x:auto; width:100%; resize:none; background:transparent; z-index:2; display:block; margin-bottom:2px; box-sizing:border-box;"></textarea>
+          <div style="font-size:92%;color:#4a6080;margin-top:6px;">Up to 150 characters per line.</div>
+          <label style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;font-size:94%;color:#13407d;cursor:pointer;">
+            <input type="checkbox" name="split_without_postcode" id="split_without_postcode" style="margin-top:3px;">
+            <span>Split addresses without a postcode</span>
+          </label>
+          <div id="noPostcodeWarn" style="display:none;font-size:92%;color:#9a5b14;margin-top:6px;max-width:520px;">
+            Results may be less accurate for addresses that do not contain a UK postcode.
+          </div>
           {% if not user.is_authenticated %}
             <div style="font-size:94%;color:#1676b6; margin-bottom:2px;">Please <a href="/pricing/" class="alert-link" style="color:#13bc75;text-decoration:underline;">upgrade</a> to format more than 3 addresses at a time.</div>
           {% elif user.is_authenticated and not is_paid_user %}
@@ -631,7 +639,15 @@
   </div>
 </div>
 <script>
-// Demo/JS submit logic REMOVED -- plain HTML POST for splitForm!
+(function() {
+  var cb = document.getElementById('split_without_postcode');
+  var warn = document.getElementById('noPostcodeWarn');
+  if (cb && warn) {
+    function syncWarn() { warn.style.display = cb.checked ? 'block' : 'none'; }
+    cb.addEventListener('change', syncWarn);
+    syncWarn();
+  }
+})();
 // Only export/copy table JS remains:
 function getTableData() {
   const headers = Array.from(document.querySelectorAll('#output-table th')).map(th=>th.innerText.trim());

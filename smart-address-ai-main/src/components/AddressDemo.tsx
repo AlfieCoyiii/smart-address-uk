@@ -5,6 +5,10 @@ import { useEffectiveOrganization } from "@/hooks/useEffectiveOrganization";
 import { parseAddress, type ParsedAddress } from "@/lib/addressParser";
 import { parseAddressesApi, type UnsplitEntry } from "@/lib/addressApi";
 import {
+  findOverlongAddressLines,
+  MAX_ADDRESS_LINE_CHARS,
+} from "@/lib/addressLimits";
+import {
   columnsForLayout,
   tableBodySegmentsForLayout,
   DEFAULT_OUTPUT_LAYOUT,
@@ -18,7 +22,9 @@ import { LayoutModeSwitch } from "@/components/LayoutModeSwitch";
 import { OutputColumnsHeaderRow } from "@/components/EditableOutputColumns";
 import { requestUsageRefresh } from "@/lib/usageEvents";
 import { Button } from "@/components/ui/button";
-import { Copy, Download, Check, Loader2, AlertCircle, Monitor } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Copy, Download, Check, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
 const ANONYMOUS_MAX = 1;
@@ -33,6 +39,7 @@ const AddressDemo = () => {
   const [copied, setCopied] = useState(false);
   const [outputLayout, setOutputLayout] = useState<OutputLayoutConfig>(DEFAULT_OUTPUT_LAYOUT);
   const [inputLineByResultIndex, setInputLineByResultIndex] = useState<Record<number, string>>({});
+  const [splitWithoutPostcode, setSplitWithoutPostcode] = useState(false);
 
   const isAnonymous = !isSignedIn;
   const lines = useMemo(() => input.trim().split("\n").filter(Boolean), [input]);
@@ -48,8 +55,21 @@ const AddressDemo = () => {
     [outputLayout],
   );
 
+  const overlongLines = useMemo(() => findOverlongAddressLines(lines), [lines]);
+
   const handleSplit = async () => {
     if (lines.length === 0) return;
+    if (overlongLines.length > 0) {
+      const preview = overlongLines
+        .slice(0, 3)
+        .map(({ line, length }) => `Line ${line} (${length} chars)`)
+        .join(", ");
+      const more = overlongLines.length > 3 ? ` and ${overlongLines.length - 3} more` : "";
+      toast.error(
+        `Each address must be ${MAX_ADDRESS_LINE_CHARS} characters or fewer. ${preview}${more}.`,
+      );
+      return;
+    }
     if (isSignedIn && !organization?.id) {
       toast.error(
         provisionError
@@ -75,6 +95,7 @@ const AddressDemo = () => {
       const { results: apiResults, unsplit: apiUnsplit } = await parseAddressesApi(addressesToSend, {
         token: token ?? undefined,
         orgId: organization?.id ?? undefined,
+        splitWithoutPostcode,
       });
       const lineMap: Record<number, string> = {};
       addressesToSend.forEach((addr, idx) => {
@@ -99,7 +120,12 @@ const AddressDemo = () => {
       setResults(fallbackResults.map((row, idx) => enrichParsedAddress(row, lineMap[idx])));
       const fallbackUnsplit: UnsplitEntry[] = fallbackResults
         .map((r, i) => ({ line: i + 1, address: fallbackLines[i], row: r }))
-        .filter(({ row }) => !(row.postcodeStart || row.postcodeEnd))
+        .filter(({ row }) => {
+          if (splitWithoutPostcode) {
+            return !row.town?.trim();
+          }
+          return !(row.postcodeStart || row.postcodeEnd);
+        })
         .map(({ line, address }) => ({ line, address }));
       setUnsplit(fallbackUnsplit);
     } finally {
@@ -151,18 +177,14 @@ const AddressDemo = () => {
           <h2 className="text-3xl md:text-4xl font-bold tracking-tight">
             See it in <span className="text-gradient-primary">action</span>
           </h2>
-          <p className="mt-3 text-muted-foreground max-w-lg mx-auto md:hidden">
-            The live address parser is optimised for larger screens. Please use a{" "}
-            <strong className="text-foreground">desktop or tablet</strong> to paste addresses and
-            split them. You can still use this site on your phone for{" "}
-            <strong className="text-foreground">sign in, pricing, billing, and team settings</strong>
-            .
-          </p>
-          <p className="mt-3 text-muted-foreground max-w-lg mx-auto hidden md:block">
+          <p className="mt-3 text-muted-foreground max-w-lg mx-auto">
             Paste UK addresses (one per line). Get structured columns in seconds. No sign-up required to try one address.
           </p>
-          <p className="mt-2 text-xs text-muted-foreground/90 max-w-lg mx-auto hidden md:block">
+          <p className="mt-2 text-xs text-muted-foreground/90 max-w-lg mx-auto">
             We process and return — your data is never stored.
+          </p>
+          <p className="mt-2 text-xs text-muted-foreground/80 max-w-lg mx-auto sm:hidden">
+            On a narrow window, scroll the results table horizontally to see all columns.
           </p>
         </motion.div>
 
@@ -171,26 +193,7 @@ const AddressDemo = () => {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5, delay: 0.1 }}
-          className="max-w-lg mx-auto md:hidden"
-        >
-          <div className="rounded-xl border border-border bg-card p-8 text-center">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-primary/30 bg-primary/5">
-              <Monitor className="h-7 w-7 text-primary" aria-hidden />
-            </div>
-            <h3 className="text-lg font-semibold text-foreground">Please use a desktop for the parser</h3>
-            <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
-              The address demo needs a wider layout for pasting lines and viewing the results table.
-              Open this page on a computer when you want to try splitting addresses.
-            </p>
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-          className="max-w-5xl mx-auto hidden md:block"
+          className="max-w-5xl mx-auto"
         >
           <div className="rounded-xl border border-border bg-card p-6">
             <div className="mb-3">
@@ -202,6 +205,35 @@ const AddressDemo = () => {
               placeholder={"Flat 3, Ashton House, 14 Baker Street, London, W1U 3BU\n27 High Street, Manchester, M4 1HQ\nSuite 12 Regency Court 45 King's Road Brighton BN1 2FA"}
               className="w-full h-40 bg-background border border-border rounded-lg p-4 text-sm text-foreground placeholder:text-muted-foreground/50 resize-none focus:outline-none focus:ring-1 focus:ring-primary/50 font-mono"
             />
+            <p className="mt-2 text-xs text-muted-foreground">
+              Up to {MAX_ADDRESS_LINE_CHARS} characters per line.
+            </p>
+            {overlongLines.length > 0 && (
+              <p className="mt-1 text-sm text-amber-600 dark:text-amber-400">
+                {overlongLines.length} line{overlongLines.length === 1 ? "" : "s"} exceed{" "}
+                {MAX_ADDRESS_LINE_CHARS} characters — shorten before splitting.
+              </p>
+            )}
+            <div className="mt-3 flex items-start gap-2">
+              <Checkbox
+                id="split-without-postcode"
+                checked={splitWithoutPostcode}
+                onCheckedChange={(checked) => setSplitWithoutPostcode(checked === true)}
+              />
+              <div className="space-y-1">
+                <Label
+                  htmlFor="split-without-postcode"
+                  className="text-sm font-normal leading-snug cursor-pointer"
+                >
+                  Split addresses without a postcode
+                </Label>
+                {splitWithoutPostcode && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
+                    Results may be less accurate for addresses that do not contain a UK postcode.
+                  </p>
+                )}
+              </div>
+            </div>
             {overLimitAnonymous && (
               <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
                 Sign in to split more than {ANONYMOUS_MAX} address at a time.
@@ -212,7 +244,9 @@ const AddressDemo = () => {
               <Button
                 variant="hero"
                 onClick={handleSplit}
-                disabled={effectiveLines.length === 0 || isProcessing}
+                disabled={
+                  effectiveLines.length === 0 || isProcessing || overlongLines.length > 0
+                }
               >
                 {isProcessing ? (
                   <>

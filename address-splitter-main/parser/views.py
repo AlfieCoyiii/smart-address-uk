@@ -314,9 +314,10 @@ def home(request):
         address_input = request.POST.get("address", "")
         input_lines = [row for row in address_input.split("\n") if row.strip()]
 
-        # NEW: Per-row character limit check
-        if any(len(addr) > 300 for addr in input_lines):
-            error = "Each address must be 300 characters or fewer. Please shorten any longer entries."
+        # Per-row character limit (aligned with parse API / marketing site)
+        max_line_chars = 150
+        if any(len(addr) > max_line_chars for addr in input_lines):
+            error = f"Each address must be {max_line_chars} characters or fewer. Please shorten any longer entries."
             processed = None
             request.session['result_dicts'] = None
         else:
@@ -346,7 +347,12 @@ def home(request):
             crf_tags_list = []
             try:
                 allow_autocorrect_list = [False] * len(input_lines)
-                parsed_result = parse_address_multi(input_lines, allow_autocorrect_list=allow_autocorrect_list)
+                split_without_postcode = request.POST.get("split_without_postcode") == "on"
+                parsed_result = parse_address_multi(
+                    input_lines,
+                    allow_autocorrect_list=allow_autocorrect_list,
+                    allow_without_postcode=split_without_postcode,
+                )
                 result_list = parsed_result[0]
                 rest_outputs = parsed_result[6]
                 rest_outputs_normalized = [smart_title(r) for r in rest_outputs]

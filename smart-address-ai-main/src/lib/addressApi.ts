@@ -11,6 +11,8 @@ export type ParseApiOptions = {
   token?: string | null;
   /** Current org id when signed in (for usage and overage). */
   orgId?: string | null;
+  /** When true, attempt to split lines that do not contain a UK postcode. */
+  splitWithoutPostcode?: boolean;
 };
 
 export type UnsplitEntry = { line: number; address: string };
@@ -33,7 +35,10 @@ export async function parseAddressesApi(
   const res = await fetch(url, {
     method: "POST",
     headers,
-    body: JSON.stringify({ addresses }),
+    body: JSON.stringify({
+      addresses,
+      split_without_postcode: Boolean(options.splitWithoutPostcode),
+    }),
   });
   if (!res.ok) {
     const text = await res.text();
