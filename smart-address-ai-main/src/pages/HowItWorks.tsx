@@ -66,7 +66,7 @@ const HowItWorks = () => {
               <div className="text-sm text-muted-foreground space-y-2">
                 <p className="text-foreground/90 font-medium">Details that matter</p>
                 <ul className="list-disc list-inside space-y-1">
-                  <li><strong className="text-foreground">Postcode optional.</strong> By default we split lines that contain a valid UK postcode. You can enable splitting without a postcode in the demo — results may be less accurate for those lines.</li>
+                  <li><strong className="text-foreground">Incomplete lines.</strong> By default we split addresses even without a postcode or town. Use parser settings to require a valid UK postcode and refund credits for lines we cannot split that way.</li>
                   <li><strong className="text-foreground">You’re only charged for what we split.</strong> If we can’t structure an address, no token is used.</li>
                   <li><strong className="text-foreground">150 characters per line.</strong> Each address line can be up to 150 characters.</li>
                 </ul>

@@ -31,6 +31,7 @@ from pydantic import BaseModel, model_validator
 from usage_limits import (
     FREE_MONTHLY_TOKENS,
     ANONYMOUS_MAX_ADDRESSES,
+    MAX_ADDRESSES_PER_REQUEST,
     check_anonymous_rate_limit,
     check_signed_in_parse_rate_limit,
     get_usage,
@@ -210,7 +211,10 @@ MAX_ADDRESS_LINE_CHARS = int(os.environ.get("MAX_ADDRESS_LINE_CHARS", "150"))
 
 class ParseRequest(BaseModel):
     addresses: list[str]
-    split_without_postcode: bool = False
+    # Default: split incomplete lines (no postcode / no town). Set false for strict postcode-only mode.
+    split_without_postcode: bool = True
+    # Deprecated: town is always attempted; kept for API compatibility.
+    split_without_town: bool = True
 
 
 class ParsedAddressResponse(BaseModel):
@@ -251,6 +255,7 @@ def run_parser_pipeline(
     addresses: list[str],
     *,
     require_postcode: bool = True,
+    require_town: bool = True,
 ) -> list[dict]:
     """Same pipeline as address_parser1.py: parse_address_multi → CRF → merge + extract_flat."""
     if not addresses:
@@ -262,12 +267,10 @@ def run_parser_pipeline(
             detail="Parser not available: CRF model not loaded.",
         )
 
-    # Optional: limit input size
-    max_addresses = 3000
-    if len(addresses) > max_addresses:
+    if len(addresses) > MAX_ADDRESSES_PER_REQUEST:
         raise HTTPException(
             status_code=400,
-            detail=f"Maximum {max_addresses} addresses per request.",
+            detail=f"Maximum {MAX_ADDRESSES_PER_REQUEST} addresses per request.",
         )
 
     allow_autocorrect_list = [False] * len(addresses)
@@ -330,8 +333,10 @@ def run_parser_pipeline(
         )
         if require_postcode:
             should_blank = not has_town or missing_postcode
-        else:
+        elif require_town:
             should_blank = not has_town and not has_street_fields
+        else:
+            should_blank = not has_street_fields
         if should_blank:
             flat_number = building_name = street_number = street_name = town = outward = inward = ""
             flat_and_building = ""
@@ -394,19 +399,26 @@ def is_billable_split_output(r: dict) -> bool:
     return bool(_UK_POST_OUT.match(po)) and bool(_UK_POST_IN.match(pi))
 
 
-def is_successful_split_output(r: dict, *, allow_without_postcode: bool = False) -> bool:
+def is_successful_split_output(
+    r: dict,
+    *,
+    allow_without_postcode: bool = False,
+    allow_without_town: bool = False,
+) -> bool:
     """Whether a parsed row counts as a successful split (billable / not unsplit)."""
     if is_billable_split_output(r):
         return True
     if not allow_without_postcode:
         return False
-    town = (r.get("town") or "").strip()
-    if not town:
-        return False
-    return any(
+    has_street_fields = any(
         (r.get(k) or "").strip()
         for k in ("streetName", "streetNumber", "buildingName", "flatNumber", "addressLine")
     )
+    if not has_street_fields:
+        return False
+    if allow_without_town:
+        return True
+    return bool((r.get("town") or "").strip())
 
 
 def line_should_skip_parser(line: str) -> bool:
@@ -428,6 +440,7 @@ def merge_parse_results(
     addresses: list[str],
     *,
     allow_without_postcode: bool = False,
+    allow_without_town: bool = False,
 ) -> tuple[list[dict], list[dict], int, int]:
     """
     Full results + unsplit. Credits = successful splits (postcode by default; town+street when opted in).
@@ -462,11 +475,19 @@ def merge_parse_results(
         unsplit.sort(key=lambda x: x["line"])
         return results, unsplit, 0, 0
 
-    parsed = run_parser_pipeline(to_parse, require_postcode=not allow_without_postcode)
+    parsed = run_parser_pipeline(
+        to_parse,
+        require_postcode=not allow_without_postcode,
+        require_town=not allow_without_town,
+    )
     n_billable = 0
     for j, pos in enumerate(parse_positions):
         r = parsed[j]
-        if is_successful_split_output(r, allow_without_postcode=allow_without_postcode):
+        if is_successful_split_output(
+            r,
+            allow_without_postcode=allow_without_postcode,
+            allow_without_town=allow_without_town,
+        ):
             results[pos] = r
             n_billable += 1
         else:
@@ -502,7 +523,13 @@ def parse_addresses(body: ParseRequest, request: Request):
     if not addresses:
         raise HTTPException(status_code=400, detail="No addresses provided.")
     _reject_overlong_addresses(addresses)
+    if len(addresses) > MAX_ADDRESSES_PER_REQUEST:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum {MAX_ADDRESSES_PER_REQUEST} addresses per request.",
+        )
     allow_without_postcode = bool(body.split_without_postcode)
+    allow_without_town = True
 
     auth_header = request.headers.get("authorization") or ""
     org_id_header = (request.headers.get("x-org-id") or "").strip() or None
@@ -519,7 +546,9 @@ def parse_addresses(body: ParseRequest, request: Request):
             raise HTTPException(status_code=429, detail=err)
         try:
             results, unsplit, _, _ = merge_parse_results(
-                addresses, allow_without_postcode=allow_without_postcode
+                addresses,
+                allow_without_postcode=allow_without_postcode,
+                allow_without_town=allow_without_town,
             )
             return ParseResponse(
                 results=[ParsedAddressResponse(**r) for r in results],
@@ -546,7 +575,9 @@ def parse_addresses(body: ParseRequest, request: Request):
             plan_cap = 5_000
         try:
             results, unsplit, n_sent, billable_count = merge_parse_results(
-                addresses, allow_without_postcode=allow_without_postcode
+                addresses,
+                allow_without_postcode=allow_without_postcode,
+                allow_without_town=allow_without_town,
             )
             if billable_count > 0:
                 overage_pid = _overage_price_id_for_plan_slug(plan_slug)
@@ -575,7 +606,9 @@ def parse_addresses(body: ParseRequest, request: Request):
 
     try:
         results, unsplit, n_sent, billable_count = merge_parse_results(
-            addresses, allow_without_postcode=allow_without_postcode
+            addresses,
+            allow_without_postcode=allow_without_postcode,
+            allow_without_town=allow_without_town,
         )
         if billable_count > 0:
             err = consume_tokens(org_id, user_id, billable_count)

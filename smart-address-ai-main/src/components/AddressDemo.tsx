@@ -19,15 +19,16 @@ import {
   type OutputLayoutConfig,
 } from "@/lib/outputLayout";
 import { LayoutModeSwitch } from "@/components/LayoutModeSwitch";
+import { ParseSettingsMenu } from "@/components/ParseSettingsMenu";
 import { OutputColumnsHeaderRow } from "@/components/EditableOutputColumns";
 import { requestUsageRefresh } from "@/lib/usageEvents";
+import { loadRequireValidPostcode, saveRequireValidPostcode } from "@/lib/parseSettings";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { Copy, Download, Check, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
-const ANONYMOUS_MAX = 1;
+/** Anonymous (signed-out) requests are intentionally limited. */
+const ANONYMOUS_MAX = Number(import.meta.env.VITE_DEV_PARSER_MAX_LINES) || 1;
 
 const AddressDemo = () => {
   const { getToken, isSignedIn } = useAuth();
@@ -39,7 +40,7 @@ const AddressDemo = () => {
   const [copied, setCopied] = useState(false);
   const [outputLayout, setOutputLayout] = useState<OutputLayoutConfig>(DEFAULT_OUTPUT_LAYOUT);
   const [inputLineByResultIndex, setInputLineByResultIndex] = useState<Record<number, string>>({});
-  const [splitWithoutPostcode, setSplitWithoutPostcode] = useState(false);
+  const [requireValidPostcode, setRequireValidPostcode] = useState(loadRequireValidPostcode);
 
   const isAnonymous = !isSignedIn;
   const lines = useMemo(() => input.trim().split("\n").filter(Boolean), [input]);
@@ -95,7 +96,7 @@ const AddressDemo = () => {
       const { results: apiResults, unsplit: apiUnsplit } = await parseAddressesApi(addressesToSend, {
         token: token ?? undefined,
         orgId: organization?.id ?? undefined,
-        splitWithoutPostcode,
+        requireValidPostcode,
       });
       const lineMap: Record<number, string> = {};
       addressesToSend.forEach((addr, idx) => {
@@ -120,12 +121,16 @@ const AddressDemo = () => {
       setResults(fallbackResults.map((row, idx) => enrichParsedAddress(row, lineMap[idx])));
       const fallbackUnsplit: UnsplitEntry[] = fallbackResults
         .map((r, i) => ({ line: i + 1, address: fallbackLines[i], row: r }))
-        .filter(({ row }) => {
-          if (splitWithoutPostcode) {
-            return !row.town?.trim();
-          }
-          return !(row.postcodeStart || row.postcodeEnd);
-        })
+        .filter(({ row }) =>
+          requireValidPostcode
+            ? !(row.postcodeStart || row.postcodeEnd)
+            : !(
+                row.streetName?.trim() ||
+                row.streetNumber?.trim() ||
+                row.buildingName?.trim() ||
+                row.flatNumber?.trim()
+              ),
+        )
         .map(({ line, address }) => ({ line, address }));
       setUnsplit(fallbackUnsplit);
     } finally {
@@ -214,26 +219,6 @@ const AddressDemo = () => {
                 {MAX_ADDRESS_LINE_CHARS} characters — shorten before splitting.
               </p>
             )}
-            <div className="mt-3 flex items-start gap-2">
-              <Checkbox
-                id="split-without-postcode"
-                checked={splitWithoutPostcode}
-                onCheckedChange={(checked) => setSplitWithoutPostcode(checked === true)}
-              />
-              <div className="space-y-1">
-                <Label
-                  htmlFor="split-without-postcode"
-                  className="text-sm font-normal leading-snug cursor-pointer"
-                >
-                  Split addresses without a postcode
-                </Label>
-                {splitWithoutPostcode && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
-                    Results may be less accurate for addresses that do not contain a UK postcode.
-                  </p>
-                )}
-              </div>
-            </div>
             {overLimitAnonymous && (
               <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
                 Sign in to split more than {ANONYMOUS_MAX} address at a time.
@@ -284,8 +269,15 @@ const AddressDemo = () => {
               <Download className="w-3.5 h-3.5" />
               Download CSV
             </Button>
-            <div className="ml-auto flex flex-wrap items-center gap-3">
+            <div className="ml-auto flex flex-wrap items-center gap-2">
               <LayoutModeSwitch layout={outputLayout} onChange={setOutputLayout} />
+              <ParseSettingsMenu
+                requireValidPostcode={requireValidPostcode}
+                onRequireValidPostcodeChange={(value) => {
+                  setRequireValidPostcode(value);
+                  saveRequireValidPostcode(value);
+                }}
+              />
               <span className="text-xs text-muted-foreground">
                 {results.length > 0
                   ? `${results.length} results · ${visibleColumns.length} columns`
@@ -307,7 +299,10 @@ const AddressDemo = () => {
                   <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-foreground">
-                      {unsplit.length} address{unsplit.length === 1 ? "" : "es"} could not be split — your credits have been returned
+                      {unsplit.length} address{unsplit.length === 1 ? "" : "es"} could not be split
+                      {requireValidPostcode
+                        ? " (no valid UK postcode) — your credits have been returned"
+                        : " — your credits have been returned"}
                     </p>
                     <ul className="mt-2 space-y-1 text-sm text-muted-foreground font-mono max-h-40 overflow-y-auto">
                       {unsplit.map(({ line, address }) => (

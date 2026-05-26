@@ -13,7 +13,10 @@ from threading import Lock
 
 # -------- Constants --------
 FREE_MONTHLY_TOKENS = 50
-ANONYMOUS_MAX_ADDRESSES = 1
+# Anonymous (signed-out) requests should stay small to prevent abuse.
+ANONYMOUS_MAX_ADDRESSES = int(os.environ.get("ANONYMOUS_MAX_ADDRESSES", "1"))
+# Signed-in requests can be larger (still bounded for CPU/memory and UX).
+MAX_ADDRESSES_PER_REQUEST = int(os.environ.get("MAX_ADDRESSES_PER_REQUEST", "10000"))
 ANONYMOUS_RATE_LIMIT_REQUESTS = 10
 ANONYMOUS_RATE_LIMIT_WINDOW_SEC = 60
 
