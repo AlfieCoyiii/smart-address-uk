@@ -239,6 +239,17 @@ class ParseResponse(BaseModel):
     unsplit: list[UnsplitEntry] = []  # addresses that could not be split (blank row in results)
 
 
+def _normalize_address_line(line: str) -> str:
+    """Excel rows pasted as TSV become one comma-separated address line."""
+    s = line.replace("\r", "").strip()
+    if not s:
+        return ""
+    if "\t" in s:
+        parts = [p.strip() for p in s.split("\t") if p.strip()]
+        return ", ".join(parts)
+    return re.sub(r"\s+", " ", s).strip()
+
+
 def _reject_overlong_addresses(addresses: list[str]) -> None:
     for i, a in enumerate(addresses, start=1):
         if len(a) > MAX_ADDRESS_LINE_CHARS:
@@ -519,7 +530,8 @@ def _reject_too_many_skipped(addresses: list[str]) -> None:
 def parse_addresses(body: ParseRequest, request: Request):
     """Parse UK addresses. Credits only for lines sent to the parser; failed splits are refunded."""
     # Never log body.addresses or raw request JSON — appears in host logs (stdout/stderr).
-    addresses = [a.strip() for a in body.addresses if a.strip()]
+    addresses = [_normalize_address_line(a) for a in body.addresses]
+    addresses = [a for a in addresses if a]
     if not addresses:
         raise HTTPException(status_code=400, detail="No addresses provided.")
     _reject_overlong_addresses(addresses)

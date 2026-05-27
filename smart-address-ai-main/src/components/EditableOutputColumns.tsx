@@ -85,7 +85,7 @@ export function OutputColumnsHeaderRow({
   };
 
   return (
-    <thead>
+    <thead className="sticky top-0 z-10 bg-muted/30 backdrop-blur-sm">
       <tr className="border-b border-border bg-muted/30">
         <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-10">
           #

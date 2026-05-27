@@ -1,13 +1,15 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@clerk/react";
 import { useEffectiveOrganization } from "@/hooks/useEffectiveOrganization";
 import { parseAddress, type ParsedAddress } from "@/lib/addressParser";
 import { parseAddressesApi, type UnsplitEntry } from "@/lib/addressApi";
+import { parseAddressInputLines } from "@/lib/addressInput";
 import {
   findOverlongAddressLines,
   MAX_ADDRESS_LINE_CHARS,
 } from "@/lib/addressLimits";
+import { buildCsvContent, buildTsvForClipboard } from "@/lib/spreadsheet";
 import {
   columnsForLayout,
   tableBodySegmentsForLayout,
@@ -24,11 +26,21 @@ import { OutputColumnsHeaderRow } from "@/components/EditableOutputColumns";
 import { requestUsageRefresh } from "@/lib/usageEvents";
 import { loadRequireValidPostcode, saveRequireValidPostcode } from "@/lib/parseSettings";
 import { Button } from "@/components/ui/button";
-import { Copy, Download, Check, Loader2, AlertCircle } from "lucide-react";
+import {
+  Copy,
+  Download,
+  Check,
+  Loader2,
+  AlertCircle,
+  Monitor,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { toast } from "sonner";
 
 /** Anonymous (signed-out) requests are intentionally limited. */
 const ANONYMOUS_MAX = Number(import.meta.env.VITE_DEV_PARSER_MAX_LINES) || 1;
+const RESULTS_PAGE_SIZE = 15;
 
 const AddressDemo = () => {
   const { getToken, isSignedIn } = useAuth();
@@ -41,9 +53,10 @@ const AddressDemo = () => {
   const [outputLayout, setOutputLayout] = useState<OutputLayoutConfig>(DEFAULT_OUTPUT_LAYOUT);
   const [inputLineByResultIndex, setInputLineByResultIndex] = useState<Record<number, string>>({});
   const [requireValidPostcode, setRequireValidPostcode] = useState(loadRequireValidPostcode);
+  const [resultsPage, setResultsPage] = useState(0);
 
   const isAnonymous = !isSignedIn;
-  const lines = useMemo(() => input.trim().split("\n").filter(Boolean), [input]);
+  const lines = useMemo(() => parseAddressInputLines(input), [input]);
   const effectiveLines = isAnonymous ? lines.slice(0, ANONYMOUS_MAX) : lines;
   const overLimitAnonymous = isAnonymous && lines.length > ANONYMOUS_MAX;
 
@@ -57,6 +70,23 @@ const AddressDemo = () => {
   );
 
   const overlongLines = useMemo(() => findOverlongAddressLines(lines), [lines]);
+
+  const resultsPageCount = Math.max(1, Math.ceil(results.length / RESULTS_PAGE_SIZE));
+  const resultsPageStart = resultsPage * RESULTS_PAGE_SIZE;
+  const pagedResults = useMemo(
+    () => results.slice(resultsPageStart, resultsPageStart + RESULTS_PAGE_SIZE),
+    [results, resultsPageStart],
+  );
+
+  useEffect(() => {
+    setResultsPage(0);
+  }, [results.length, outputLayout.mode, outputLayout.combinePostcode, outputLayout.combineFlatBuilding]);
+
+  useEffect(() => {
+    if (resultsPage >= resultsPageCount) {
+      setResultsPage(Math.max(0, resultsPageCount - 1));
+    }
+  }, [resultsPage, resultsPageCount]);
 
   const handleSplit = async () => {
     if (lines.length === 0) return;
@@ -144,22 +174,24 @@ const AddressDemo = () => {
   const getColumnLabel = (col: DisplayColumn): string =>
     labelForDisplayColumn(col, outputLayout);
 
-  const copyToClipboard = () => {
-    const header = visibleColumns.map(c => getColumnLabel(c)).join("\t");
+  const buildExportRows = () => {
+    const headers = visibleColumns.map((c) => getColumnLabel(c));
     const rows = results.map((r, i) =>
-      visibleColumns.map((c) => getRowValue(r, c, i)).join("\t"),
+      visibleColumns.map((c) => getRowValue(r, c, i)),
     );
-    navigator.clipboard.writeText([header, ...rows].join("\n"));
+    return { headers, rows };
+  };
+
+  const copyToClipboard = () => {
+    const { headers, rows } = buildExportRows();
+    navigator.clipboard.writeText(buildTsvForClipboard(headers, rows));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const downloadCSV = () => {
-    const header = visibleColumns.map(c => getColumnLabel(c)).join(",");
-    const rows = results.map((r, i) =>
-      visibleColumns.map((c) => `"${getRowValue(r, c, i).replace(/"/g, '""')}"`).join(","),
-    );
-    const csv = [header, ...rows].join("\n");
+    const { headers, rows } = buildExportRows();
+    const csv = buildCsvContent(headers, rows);
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -182,14 +214,15 @@ const AddressDemo = () => {
           <h2 className="text-3xl md:text-4xl font-bold tracking-tight">
             See it in <span className="text-gradient-primary">action</span>
           </h2>
-          <p className="mt-3 text-muted-foreground max-w-lg mx-auto">
+          <p className="mt-3 text-muted-foreground max-w-lg mx-auto md:hidden">
+            The live address parser is optimised for desktop. Use a computer to paste addresses and
+            view results. You can still sign in, manage billing, and browse the site on your phone.
+          </p>
+          <p className="mt-3 text-muted-foreground max-w-lg mx-auto hidden md:block">
             Paste UK addresses (one per line). Get structured columns in seconds. No sign-up required to try one address.
           </p>
-          <p className="mt-2 text-xs text-muted-foreground/90 max-w-lg mx-auto">
+          <p className="mt-2 text-xs text-muted-foreground/90 max-w-lg mx-auto hidden md:block">
             We process and return — your data is never stored.
-          </p>
-          <p className="mt-2 text-xs text-muted-foreground/80 max-w-lg mx-auto sm:hidden">
-            On a narrow window, scroll the results table horizontally to see all columns.
           </p>
         </motion.div>
 
@@ -198,7 +231,26 @@ const AddressDemo = () => {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5, delay: 0.1 }}
-          className="max-w-5xl mx-auto"
+          className="max-w-lg mx-auto md:hidden"
+        >
+          <div className="rounded-xl border border-border bg-card p-8 text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-primary/30 bg-primary/5">
+              <Monitor className="h-7 w-7 text-primary" aria-hidden />
+            </div>
+            <h3 className="text-lg font-semibold text-foreground">Please use a desktop for the parser</h3>
+            <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
+              The address demo needs a wider screen for pasting lines and scrolling results. Open this page on a
+              computer when you want to split addresses.
+            </p>
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+          className="max-w-5xl mx-auto hidden md:block"
         >
           <div className="rounded-xl border border-border bg-card p-6">
             <div className="mb-3">
@@ -320,42 +372,80 @@ const AddressDemo = () => {
 
           <div className="mt-4 rounded-xl border border-border bg-card overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <OutputColumnsHeaderRow layout={outputLayout} onChange={setOutputLayout} />
-                <tbody>
-                  {results.map((row, i) => (
-                    <tr
-                      key={i}
-                      className="border-b border-border/50 hover:bg-muted/20 transition-colors"
-                    >
-                      <td className="px-4 py-2.5 text-xs text-muted-foreground">{i + 1}</td>
-                      {bodySegments.map((segment, segIndex) => {
-                        if (segment.kind === "join-spacer") {
-                          return (
-                            <td
-                              key={`join-spacer-${segIndex}`}
-                              className="w-10 px-1"
-                              aria-hidden
-                            />
-                          );
-                        }
-                        const col = segment.col;
-                        return (
-                          <td
-                            key={col}
-                            className="px-4 py-2.5 text-foreground whitespace-nowrap font-mono text-xs"
-                          >
-                            {getRowValue(row, col, i) || (
-                              <span className="text-muted-foreground/30">—</span>
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="max-h-[min(65vh,520px)] overflow-y-auto overscroll-contain">
+                <table className="w-full text-sm">
+                  <OutputColumnsHeaderRow layout={outputLayout} onChange={setOutputLayout} />
+                  <tbody>
+                    {pagedResults.map((row, pageIndex) => {
+                      const rowIndex = resultsPageStart + pageIndex;
+                      return (
+                        <tr
+                          key={rowIndex}
+                          className="border-b border-border/50 hover:bg-muted/20 transition-colors"
+                        >
+                          <td className="px-4 py-2.5 text-xs text-muted-foreground">{rowIndex + 1}</td>
+                          {bodySegments.map((segment, segIndex) => {
+                            if (segment.kind === "join-spacer") {
+                              return (
+                                <td
+                                  key={`join-spacer-${segIndex}`}
+                                  className="w-10 px-1"
+                                  aria-hidden
+                                />
+                              );
+                            }
+                            const col = segment.col;
+                            return (
+                              <td
+                                key={col}
+                                className="px-4 py-2.5 text-foreground whitespace-nowrap font-mono text-xs"
+                              >
+                                {getRowValue(row, col, rowIndex) || (
+                                  <span className="text-muted-foreground/30">—</span>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
+            {results.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
+                <p className="text-xs text-muted-foreground">
+                  Showing {resultsPageStart + 1}–
+                  {Math.min(resultsPageStart + RESULTS_PAGE_SIZE, results.length)} of {results.length}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={resultsPage <= 0}
+                    onClick={() => setResultsPage((p) => Math.max(0, p - 1))}
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                    Previous
+                  </Button>
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    Page {resultsPage + 1} of {resultsPageCount}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={resultsPage >= resultsPageCount - 1}
+                    onClick={() => setResultsPage((p) => Math.min(resultsPageCount - 1, p + 1))}
+                  >
+                    Next
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </motion.div>
       </div>
