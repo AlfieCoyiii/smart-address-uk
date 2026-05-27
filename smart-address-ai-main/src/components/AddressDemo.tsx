@@ -8,6 +8,7 @@ import {
   findOverlongAddressLines,
   MAX_ADDRESS_LINE_CHARS,
 } from "@/lib/addressLimits";
+import { buildCsvContent, buildTsvForClipboard } from "@/lib/spreadsheetExport";
 import {
   columnsForLayout,
   tableBodySegmentsForLayout,
@@ -150,22 +151,24 @@ const AddressDemo = () => {
   const getColumnLabel = (col: DisplayColumn): string =>
     labelForDisplayColumn(col, outputLayout);
 
-  const copyToClipboard = () => {
-    const header = visibleColumns.map((c) => getColumnLabel(c)).join("\t");
+  const buildExportRows = () => {
+    const headers = visibleColumns.map((c) => getColumnLabel(c));
     const rows = results.map((r, i) =>
-      visibleColumns.map((c) => getRowValue(r, c, i)).join("\t"),
+      visibleColumns.map((c) => getRowValue(r, c, i)),
     );
-    navigator.clipboard.writeText([header, ...rows].join("\n"));
+    return { headers, rows };
+  };
+
+  const copyToClipboard = () => {
+    const { headers, rows } = buildExportRows();
+    navigator.clipboard.writeText(buildTsvForClipboard(headers, rows));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const downloadCSV = () => {
-    const header = visibleColumns.map((c) => getColumnLabel(c)).join(",");
-    const rows = results.map((r, i) =>
-      visibleColumns.map((c) => `"${getRowValue(r, c, i).replace(/"/g, '""')}"`).join(","),
-    );
-    const csv = [header, ...rows].join("\n");
+    const { headers, rows } = buildExportRows();
+    const csv = buildCsvContent(headers, rows);
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -233,8 +236,9 @@ const AddressDemo = () => {
             <textarea
               value={input}
               onChange={e => setInput(e.target.value)}
+              wrap="off"
               placeholder={"Flat 3, Ashton House, 14 Baker Street, London, W1U 3BU\n27 High Street, Manchester, M4 1HQ\nSuite 12 Regency Court 45 King's Road Brighton BN1 2FA"}
-              className="w-full min-h-40 max-h-[min(40vh,280px)] overflow-y-auto overscroll-contain bg-background border border-border rounded-lg p-4 text-sm text-foreground placeholder:text-muted-foreground/50 resize-y focus:outline-none focus:ring-1 focus:ring-primary/50 font-mono"
+              className="block w-full min-h-40 max-h-[min(40vh,280px)] overflow-x-auto overflow-y-auto overscroll-contain whitespace-pre bg-background border border-border rounded-lg p-4 text-sm text-foreground placeholder:text-muted-foreground/50 resize-y focus:outline-none focus:ring-1 focus:ring-primary/50 font-mono"
             />
             <p className="mt-2 text-xs text-muted-foreground">
               Up to {MAX_ADDRESS_LINE_CHARS} characters per line.
@@ -332,9 +336,11 @@ const AddressDemo = () => {
                     </p>
                     <ul className="mt-2 space-y-1 text-sm text-muted-foreground font-mono max-h-40 overflow-y-auto">
                       {unsplit.map(({ line, address }) => (
-                        <li key={line}>
-                          <span className="text-amber-600 dark:text-amber-400 font-medium">Line {line}:</span>{" "}
-                          <span className="break-all">{address}</span>
+                        <li key={line} className="overflow-x-auto overscroll-contain">
+                          <span className="text-amber-600 dark:text-amber-400 font-medium whitespace-nowrap">
+                            Line {line}:
+                          </span>{" "}
+                          <span className="whitespace-pre">{address}</span>
                         </li>
                       ))}
                     </ul>
