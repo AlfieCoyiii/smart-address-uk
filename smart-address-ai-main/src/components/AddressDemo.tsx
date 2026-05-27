@@ -1,15 +1,13 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@clerk/react";
 import { useEffectiveOrganization } from "@/hooks/useEffectiveOrganization";
 import { parseAddress, type ParsedAddress } from "@/lib/addressParser";
 import { parseAddressesApi, type UnsplitEntry } from "@/lib/addressApi";
-import { parseAddressInputLines } from "@/lib/addressInput";
 import {
   findOverlongAddressLines,
   MAX_ADDRESS_LINE_CHARS,
 } from "@/lib/addressLimits";
-import { buildCsvContent, buildTsvForClipboard } from "@/lib/spreadsheet";
 import {
   columnsForLayout,
   tableBodySegmentsForLayout,
@@ -33,14 +31,11 @@ import {
   Loader2,
   AlertCircle,
   Monitor,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 
 /** Anonymous (signed-out) requests are intentionally limited. */
 const ANONYMOUS_MAX = Number(import.meta.env.VITE_DEV_PARSER_MAX_LINES) || 1;
-const RESULTS_PAGE_SIZE = 15;
 
 const AddressDemo = () => {
   const { getToken, isSignedIn } = useAuth();
@@ -53,10 +48,8 @@ const AddressDemo = () => {
   const [outputLayout, setOutputLayout] = useState<OutputLayoutConfig>(DEFAULT_OUTPUT_LAYOUT);
   const [inputLineByResultIndex, setInputLineByResultIndex] = useState<Record<number, string>>({});
   const [requireValidPostcode, setRequireValidPostcode] = useState(loadRequireValidPostcode);
-  const [resultsPage, setResultsPage] = useState(0);
-
   const isAnonymous = !isSignedIn;
-  const lines = useMemo(() => parseAddressInputLines(input), [input]);
+  const lines = useMemo(() => input.trim().split("\n").filter(Boolean), [input]);
   const effectiveLines = isAnonymous ? lines.slice(0, ANONYMOUS_MAX) : lines;
   const overLimitAnonymous = isAnonymous && lines.length > ANONYMOUS_MAX;
 
@@ -70,23 +63,6 @@ const AddressDemo = () => {
   );
 
   const overlongLines = useMemo(() => findOverlongAddressLines(lines), [lines]);
-
-  const resultsPageCount = Math.max(1, Math.ceil(results.length / RESULTS_PAGE_SIZE));
-  const resultsPageStart = resultsPage * RESULTS_PAGE_SIZE;
-  const pagedResults = useMemo(
-    () => results.slice(resultsPageStart, resultsPageStart + RESULTS_PAGE_SIZE),
-    [results, resultsPageStart],
-  );
-
-  useEffect(() => {
-    setResultsPage(0);
-  }, [results.length, outputLayout.mode, outputLayout.combinePostcode, outputLayout.combineFlatBuilding]);
-
-  useEffect(() => {
-    if (resultsPage >= resultsPageCount) {
-      setResultsPage(Math.max(0, resultsPageCount - 1));
-    }
-  }, [resultsPage, resultsPageCount]);
 
   const handleSplit = async () => {
     if (lines.length === 0) return;
@@ -174,24 +150,22 @@ const AddressDemo = () => {
   const getColumnLabel = (col: DisplayColumn): string =>
     labelForDisplayColumn(col, outputLayout);
 
-  const buildExportRows = () => {
-    const headers = visibleColumns.map((c) => getColumnLabel(c));
-    const rows = results.map((r, i) =>
-      visibleColumns.map((c) => getRowValue(r, c, i)),
-    );
-    return { headers, rows };
-  };
-
   const copyToClipboard = () => {
-    const { headers, rows } = buildExportRows();
-    navigator.clipboard.writeText(buildTsvForClipboard(headers, rows));
+    const header = visibleColumns.map((c) => getColumnLabel(c)).join("\t");
+    const rows = results.map((r, i) =>
+      visibleColumns.map((c) => getRowValue(r, c, i)).join("\t"),
+    );
+    navigator.clipboard.writeText([header, ...rows].join("\n"));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const downloadCSV = () => {
-    const { headers, rows } = buildExportRows();
-    const csv = buildCsvContent(headers, rows);
+    const header = visibleColumns.map((c) => getColumnLabel(c)).join(",");
+    const rows = results.map((r, i) =>
+      visibleColumns.map((c) => `"${getRowValue(r, c, i).replace(/"/g, '""')}"`).join(","),
+    );
+    const csv = [header, ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -260,7 +234,7 @@ const AddressDemo = () => {
               value={input}
               onChange={e => setInput(e.target.value)}
               placeholder={"Flat 3, Ashton House, 14 Baker Street, London, W1U 3BU\n27 High Street, Manchester, M4 1HQ\nSuite 12 Regency Court 45 King's Road Brighton BN1 2FA"}
-              className="w-full h-40 bg-background border border-border rounded-lg p-4 text-sm text-foreground placeholder:text-muted-foreground/50 resize-none focus:outline-none focus:ring-1 focus:ring-primary/50 font-mono"
+              className="w-full min-h-40 max-h-[min(40vh,280px)] overflow-y-auto overscroll-contain bg-background border border-border rounded-lg p-4 text-sm text-foreground placeholder:text-muted-foreground/50 resize-y focus:outline-none focus:ring-1 focus:ring-primary/50 font-mono"
             />
             <p className="mt-2 text-xs text-muted-foreground">
               Up to {MAX_ADDRESS_LINE_CHARS} characters per line.
@@ -371,81 +345,43 @@ const AddressDemo = () => {
           </AnimatePresence>
 
           <div className="mt-4 rounded-xl border border-border bg-card overflow-hidden">
-            <div className="overflow-x-auto">
-              <div className="max-h-[min(65vh,520px)] overflow-y-auto overscroll-contain">
-                <table className="w-full text-sm">
-                  <OutputColumnsHeaderRow layout={outputLayout} onChange={setOutputLayout} />
-                  <tbody>
-                    {pagedResults.map((row, pageIndex) => {
-                      const rowIndex = resultsPageStart + pageIndex;
-                      return (
-                        <tr
-                          key={rowIndex}
-                          className="border-b border-border/50 hover:bg-muted/20 transition-colors"
-                        >
-                          <td className="px-4 py-2.5 text-xs text-muted-foreground">{rowIndex + 1}</td>
-                          {bodySegments.map((segment, segIndex) => {
-                            if (segment.kind === "join-spacer") {
-                              return (
-                                <td
-                                  key={`join-spacer-${segIndex}`}
-                                  className="w-10 px-1"
-                                  aria-hidden
-                                />
-                              );
-                            }
-                            const col = segment.col;
-                            return (
-                              <td
-                                key={col}
-                                className="px-4 py-2.5 text-foreground whitespace-nowrap font-mono text-xs"
-                              >
-                                {getRowValue(row, col, rowIndex) || (
-                                  <span className="text-muted-foreground/30">—</span>
-                                )}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+            <div className="max-h-[min(65vh,520px)] overflow-auto overscroll-contain">
+              <table className="w-full text-sm">
+                <OutputColumnsHeaderRow layout={outputLayout} onChange={setOutputLayout} />
+                <tbody>
+                  {results.map((row, i) => (
+                    <tr
+                      key={i}
+                      className="border-b border-border/50 hover:bg-muted/20 transition-colors"
+                    >
+                      <td className="px-4 py-2.5 text-xs text-muted-foreground">{i + 1}</td>
+                      {bodySegments.map((segment, segIndex) => {
+                        if (segment.kind === "join-spacer") {
+                          return (
+                            <td
+                              key={`join-spacer-${segIndex}`}
+                              className="w-10 px-1"
+                              aria-hidden
+                            />
+                          );
+                        }
+                        const col = segment.col;
+                        return (
+                          <td
+                            key={col}
+                            className="px-4 py-2.5 text-foreground whitespace-nowrap font-mono text-xs"
+                          >
+                            {getRowValue(row, col, i) || (
+                              <span className="text-muted-foreground/30">—</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            {results.length > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
-                <p className="text-xs text-muted-foreground">
-                  Showing {resultsPageStart + 1}–
-                  {Math.min(resultsPageStart + RESULTS_PAGE_SIZE, results.length)} of {results.length}
-                </p>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={resultsPage <= 0}
-                    onClick={() => setResultsPage((p) => Math.max(0, p - 1))}
-                  >
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                    Previous
-                  </Button>
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    Page {resultsPage + 1} of {resultsPageCount}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={resultsPage >= resultsPageCount - 1}
-                    onClick={() => setResultsPage((p) => Math.min(resultsPageCount - 1, p + 1))}
-                  >
-                    Next
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-            )}
           </div>
         </motion.div>
       </div>
