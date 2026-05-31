@@ -98,7 +98,10 @@ export const STRIPE_PRICE_IDS = {
   starter: import.meta.env.VITE_STRIPE_PRICE_STARTER || "",
   pro: import.meta.env.VITE_STRIPE_PRICE_PRO || "",
   corporate: import.meta.env.VITE_STRIPE_PRICE_CORPORATE || "",
+  scale: import.meta.env.VITE_STRIPE_PRICE_SCALE || "",
 };
+
+export type StripePriceIdKey = keyof typeof STRIPE_PRICE_IDS;
 
 /** True if value looks like a real Stripe Price ID (not a placeholder). */
 export function looksLikeStripePriceId(id: string): boolean {

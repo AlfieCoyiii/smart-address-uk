@@ -59,6 +59,12 @@ def _init_db():
                 conn.execute(
                     "ALTER TABLE org_settings ADD COLUMN paid_monthly_overage_max INTEGER NULL"
                 )
+            info = conn.execute("PRAGMA table_info(org_settings)").fetchall()
+            cols = [r[1] for r in info]
+            if "billing_period_start" not in cols:
+                conn.execute("ALTER TABLE org_settings ADD COLUMN billing_period_start INTEGER NULL")
+            if "billing_period_end" not in cols:
+                conn.execute("ALTER TABLE org_settings ADD COLUMN billing_period_end INTEGER NULL")
             conn.commit()
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS member_settings (
@@ -101,8 +107,95 @@ def _init_db():
 
 
 def _period_now() -> str:
-    """Current calendar month YYYY-MM."""
+    """Current calendar month YYYY-MM (UTC). Used for free tier."""
     return time.strftime("%Y-%m", time.gmtime())
+
+
+def _stripe_period_key(period_start: int, period_end: int) -> str:
+    return f"stripe:{period_start}:{period_end}"
+
+
+def sync_org_billing_period(org_id: str, period_start: int, period_end: int) -> None:
+    """Cache Stripe subscription current_period_* for usage bucketing (paid teams)."""
+    if not org_id or period_end <= period_start:
+        return
+    _init_db()
+    with _db_lock:
+        conn = _get_conn()
+        try:
+            conn.execute(
+                """
+                INSERT INTO org_settings (org_id, overage_limit, allow_all_see_usage, paid_monthly_overage_max,
+                    billing_period_start, billing_period_end)
+                VALUES (?, NULL, 1, NULL, ?, ?)
+                ON CONFLICT(org_id) DO UPDATE SET
+                    billing_period_start = excluded.billing_period_start,
+                    billing_period_end = excluded.billing_period_end
+                """,
+                (org_id, int(period_start), int(period_end)),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def clear_org_billing_period(org_id: str) -> None:
+    """Drop cached billing period when subscription ends (revert to calendar-month free tier)."""
+    if not org_id:
+        return
+    _init_db()
+    with _db_lock:
+        conn = _get_conn()
+        try:
+            conn.execute(
+                """
+                UPDATE org_settings
+                SET billing_period_start = NULL, billing_period_end = NULL
+                WHERE org_id = ?
+                """,
+                (org_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def get_org_billing_period(org_id: str | None) -> tuple[int, int] | None:
+    """Return (start, end) unix timestamps for the org's Stripe billing period, if cached."""
+    if not org_id:
+        return None
+    _init_db()
+    with _db_lock:
+        conn = _get_conn()
+        try:
+            row = conn.execute(
+                "SELECT billing_period_start, billing_period_end FROM org_settings WHERE org_id = ?",
+                (org_id,),
+            ).fetchone()
+            if not row or row["billing_period_start"] is None or row["billing_period_end"] is None:
+                return None
+            start = int(row["billing_period_start"])
+            end = int(row["billing_period_end"])
+            if end <= start:
+                return None
+            return start, end
+        finally:
+            conn.close()
+
+
+def _usage_period(org_id: str | None, user_id: str) -> str:
+    """
+    Usage bucket id: paid orgs use Stripe subscription period (synced from parse_api);
+    free / personal use UTC calendar month.
+    """
+    if org_id:
+        cached = get_org_billing_period(org_id)
+        if cached:
+            start, end = cached
+            now = int(time.time())
+            if start <= now < end:
+                return _stripe_period_key(start, end)
+    return _period_now()
 
 
 def _usage_key(org_id: str | None, user_id: str) -> str:
@@ -118,7 +211,7 @@ def migrate_personal_usage_to_org(user_id: str, org_id: str) -> None:
     from user:* to org:* so credits don't reset (same bucket, new key).
     """
     _init_db()
-    period = _period_now()
+    period = _usage_period(org_id, user_id)
     user_key = f"user:{user_id}"
     org_key = f"org:{org_id}"
     with _db_lock:
@@ -167,7 +260,7 @@ def get_usage(org_id: str | None, user_id: str) -> tuple[int, int, int | None]:
     """
     _init_db()
     key = _usage_key(org_id, user_id)
-    period = _period_now()
+    period = _usage_period(org_id, user_id)
     with _db_lock:
         conn = _get_conn()
         try:
@@ -196,7 +289,7 @@ def consume_tokens(org_id: str | None, user_id: str, count: int) -> str | None:
     """
     _init_db()
     key = _usage_key(org_id, user_id)
-    period = _period_now()
+    period = _usage_period(org_id, user_id)
     tokens_used, overage_used, _ = get_usage(org_id, user_id)
     remaining_free = max(0, FREE_MONTHLY_TOKENS - tokens_used)
     if count > remaining_free:
@@ -363,7 +456,7 @@ def set_member_settings(org_id: str, user_id: str, can_see_usage: bool | None = 
 def get_member_usage(org_id: str, user_id: str) -> int:
     """Return tokens_used for this member in the org for current period."""
     _init_db()
-    period = _period_now()
+    period = _usage_period(org_id, user_id)
     with _db_lock:
         conn = _get_conn()
         try:
@@ -379,7 +472,7 @@ def get_member_usage(org_id: str, user_id: str) -> int:
 def get_members_usage(org_id: str) -> list[tuple[str, int]]:
     """Return list of (user_id, tokens_used) for current period for this org."""
     _init_db()
-    period = _period_now()
+    period = _usage_period(org_id, "unused")
     with _db_lock:
         conn = _get_conn()
         try:
@@ -459,16 +552,16 @@ def consume_tokens_paid(
         return (None, 0)
     _init_db()
     key = f"org:{org_id}"
-    period = _period_now()
-    tokens_used, overage_used_row, _ = get_usage(org_id, "unused")
+    period = _usage_period(org_id, user_id or "unused")
+    tokens_used, overage_used_row, _ = get_usage(org_id, user_id or "unused")
     overage_this_batch = max(0, tokens_used + count - monthly_cap) - max(0, tokens_used - monthly_cap)
 
     if paid_overage_max is not None and overage_this_batch > 0:
         if overage_used_row + overage_this_batch > paid_overage_max:
             return (
                 (
-                    f"You've used {overage_used_row} of {paid_overage_max} allowed overage addresses this month "
-                    f"(beyond your {monthly_cap:,} included). Increase the cap in Team settings or wait until next month."
+                    f"You've used {overage_used_row} of {paid_overage_max} allowed overage addresses this billing period "
+                    f"(beyond your {monthly_cap:,} included). Increase the cap in Team settings or wait until your plan renews."
                 ),
                 0,
             )
@@ -476,8 +569,8 @@ def consume_tokens_paid(
     if tokens_used + count > monthly_cap and not allow_overage:
         return (
             (
-                f"You've used {tokens_used} of {monthly_cap} addresses this month. "
-                f"Upgrade your plan or wait until next month for more."
+                f"You've used {tokens_used} of {monthly_cap} addresses this billing period. "
+                f"Upgrade your plan or wait until your subscription renews for more."
             ),
             0,
         )
@@ -488,7 +581,7 @@ def consume_tokens_paid(
             if member_used + count > personal_limit:
                 return (
                     (
-                        f"Your personal limit is {personal_limit} addresses this month. "
+                        f"Your personal limit is {personal_limit} addresses this billing period. "
                         f"You've used {member_used}. Ask your team admin to increase it."
                     ),
                     0,
@@ -543,7 +636,7 @@ def refund_tokens(org_id: str | None, user_id: str, refund: int) -> None:
     refund_left = refund - take_ov
     new_tokens = max(0, tokens_used - refund_left)
     key = _usage_key(org_id, user_id)
-    period = _period_now()
+    period = _usage_period(org_id, user_id)
     with _db_lock:
         conn = _get_conn()
         try:
@@ -568,8 +661,8 @@ def refund_tokens_paid(org_id: str, refund: int, user_id: str | None = None) -> 
         return
     _init_db()
     key = f"org:{org_id}"
-    period = _period_now()
-    tokens_used, _, _ = get_usage(org_id, "unused")
+    period = _usage_period(org_id, user_id or "unused")
+    tokens_used, _, _ = get_usage(org_id, user_id or "unused")
     new_org = max(0, tokens_used - refund)
     with _db_lock:
         conn = _get_conn()

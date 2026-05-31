@@ -17,7 +17,7 @@ import { createPortalSession } from "@/lib/stripeApi";
 import {
   computeCreditsRemaining,
   creditsRemainingTitle,
-  CREDITS_MONTH_RESET_NOTE,
+  creditsResetNote,
 } from "@/lib/usageCredits";
 import { toast } from "sonner";
 import {
@@ -52,6 +52,7 @@ import { clerkAppearance } from "@/lib/clerkTheme";
 function overagePencePerAddress(plan: string): number {
   if (plan === "starter") return 6;
   if (plan === "pro") return 4;
+  if (plan === "scale") return 1;
   return 2;
 }
 
@@ -465,7 +466,9 @@ const Team = () => {
                         </>
                       )}
                     </p>
-                    <p className="text-xs text-muted-foreground/90 mt-2 max-w-lg">{CREDITS_MONTH_RESET_NOTE}</p>
+                    <p className="text-xs text-muted-foreground/90 mt-2 max-w-lg">
+                      {creditsResetNote(settings.plan, settings.billing_period_end ?? null)}
+                    </p>
                     {settings.plan === "free" && (
                       <p className="text-xs text-amber-600/90 dark:text-amber-400/90 mt-3 max-w-xl">
                         On the free plan you get {settings.tokens_limit} credits/month per team with no overage. Subscribe on Pricing for

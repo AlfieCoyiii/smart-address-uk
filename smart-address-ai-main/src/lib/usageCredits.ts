@@ -8,6 +8,7 @@ export type UsageForCredits = {
   tokens_limit: number;
   overage_used: number;
   overage_limit: number | null;
+  billing_period_end?: number | null;
 };
 
 export type CreditsBreakdown =
@@ -67,16 +68,35 @@ export function computeCreditsRemaining(u: UsageForCredits): CreditsBreakdown {
 export function planDisplayName(plan: string): string {
   const p = (plan || "free").toLowerCase();
   if (p === "free") return "Free";
-  if (p === "starter") return "Starter";
-  if (p === "pro") return "Pro";
-  if (p === "corporate" || p === "enterprise") return "Corporate";
+  if (p === "starter") return "2,000 / month";
+  if (p === "pro") return "5,000 / month";
+  if (p === "corporate" || p === "enterprise") return "15,000 / month";
+  if (p === "scale") return "50,000 / month";
   if (!plan) return "Free";
   return plan.charAt(0).toUpperCase() + plan.slice(1).toLowerCase();
 }
 
 /** Shown in usage tooltips — matches how the API counts monthly buckets (UTC). */
 export const CREDITS_MONTH_RESET_NOTE =
-  "Allowance resets at the start of each calendar month (UTC).";
+  "Free plan: allowance resets at the start of each calendar month (UTC). Paid plans: allowance resets when your subscription renews (same dates as your Stripe invoice).";
+
+export function creditsResetNote(plan: string, billingPeriodEndUnix?: number | null): string {
+  const p = (plan || "free").toLowerCase();
+  if (p !== "free" && billingPeriodEndUnix) {
+    const end = new Date(billingPeriodEndUnix * 1000);
+    const formatted = end.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+    return `Paid plan: included credits reset on ${formatted} (UTC) when your subscription renews.`;
+  }
+  if (p !== "free") {
+    return "Paid plan: included credits reset when your subscription renews (same dates as your Stripe invoice).";
+  }
+  return "Free plan: allowance resets at the start of each calendar month (UTC).";
+}
 
 /**
  * Navbar: plan label + remaining/cap (no "left" in the compact bar).
@@ -88,7 +108,10 @@ export function navbarUsageSummary(u: UsageForCredits): {
 } {
   const c = computeCreditsRemaining(u);
   const planChip = planDisplayName(u.plan);
-  const tooltipBody = [creditsRemainingTitle(c), CREDITS_MONTH_RESET_NOTE].join("\n\n");
+  const tooltipBody = [
+    creditsRemainingTitle(c),
+    creditsResetNote(u.plan, u.billing_period_end ?? null),
+  ].join("\n\n");
 
   if (!c.isFree && c.paidOverageUnlimited) {
     return {

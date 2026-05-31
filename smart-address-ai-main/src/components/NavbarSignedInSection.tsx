@@ -29,6 +29,7 @@ export function NavbarSignedInSection({
     tokens_limit: number;
     overage_used: number;
     overage_limit: number | null;
+    billing_period_end?: number | null;
   } | null>(null);
 
   useEffect(() => {
@@ -54,6 +55,7 @@ export function NavbarSignedInSection({
           tokens_limit: u.tokens_limit,
           overage_used: u.overage_used,
           overage_limit: u.overage_limit,
+          billing_period_end: u.billing_period_end ?? null,
         });
       } catch {
         setUsage(null);

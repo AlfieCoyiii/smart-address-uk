@@ -134,6 +134,8 @@ export async function fetchUsage(options: { token: string; orgId?: string | null
   overage_limit: number | null;
   plan: string;
   paid_overage_billing_enabled?: boolean;
+  billing_period_start?: number | null;
+  billing_period_end?: number | null;
 }> {
   const base = getApiBase();
   const url = base ? `${base}/usage` : "/api/usage";
@@ -189,6 +191,8 @@ export async function fetchTeamSettings(options: { token: string; orgId: string 
   has_active_subscription?: boolean;
   /** Org admins must cancel the subscription before leaving (members may leave). */
   must_cancel_subscription_before_leave?: boolean;
+  billing_period_start?: number | null;
+  billing_period_end?: number | null;
 }> {
   const base = getApiBase();
   const url = base ? `${base}/team/settings` : "/api/team/settings";

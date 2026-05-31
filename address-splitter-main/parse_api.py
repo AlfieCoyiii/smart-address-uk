@@ -48,6 +48,9 @@ from usage_limits import (
     get_member_usage,
     get_members_usage,
     migrate_personal_usage_to_org,
+    sync_org_billing_period,
+    clear_org_billing_period,
+    get_org_billing_period,
     admin_list_usage_for_period,
     admin_get_usage_row,
     admin_list_audit,
@@ -681,8 +684,8 @@ def get_usage_endpoint(request: Request):
         raise HTTPException(status_code=401, detail="Sign in to view usage.")
     if org_id:
         migrate_personal_usage_to_org(user_id, org_id)
-    tokens_used, overage_used, _free_overage_limit = get_usage(org_id, user_id)
     plan_cap, plan_slug = _org_paid_plan_info(org_id) if org_id else (None, None)
+    tokens_used, overage_used, _free_overage_limit = get_usage(org_id, user_id)
     tokens_limit = plan_cap if plan_cap is not None else FREE_MONTHLY_TOKENS
     paid_ov = get_paid_monthly_overage_max(org_id) if org_id and plan_cap else None
     overage_pid = _overage_price_id_for_plan_slug(plan_slug) if plan_slug else None
@@ -693,6 +696,7 @@ def get_usage_endpoint(request: Request):
         "overage_limit": paid_ov if plan_cap is not None else None,
         "plan": plan_slug if plan_slug else "free",
         "paid_overage_billing_enabled": bool(plan_cap is not None and overage_pid),
+        **_billing_period_api_fields(org_id),
     }
 
 
@@ -771,8 +775,8 @@ def get_team_settings(request: Request):
     """Get org settings (overage_limit, allow_all_see_usage) and current user's role and usage."""
     org_id, user_id = _require_team_auth(request)
     settings = get_org_settings(org_id)
-    tokens_used, overage_used, _free_ov = get_usage(org_id, user_id)
     plan_cap, plan_slug = _org_paid_plan_info(org_id) if org_id else (None, None)
+    tokens_used, overage_used, _free_ov = get_usage(org_id, user_id)
     tokens_limit = plan_cap if plan_cap is not None else FREE_MONTHLY_TOKENS
     paid_ov_max = settings.get("paid_monthly_overage_max")
     overage_pid = _overage_price_id_for_plan_slug(plan_slug) if plan_slug else None
@@ -798,6 +802,7 @@ def get_team_settings(request: Request):
         "personal_limit": personal_limit,
         "has_active_subscription": has_active_subscription,
         "must_cancel_subscription_before_leave": must_cancel_subscription_before_leave,
+        **_billing_period_api_fields(org_id),
     }
 
 
@@ -1018,6 +1023,7 @@ def _price_id_to_cap(price_id: str) -> int | None:
     starter = (os.environ.get("STRIPE_PRICE_STARTER") or "").strip()
     pro = (os.environ.get("STRIPE_PRICE_PRO") or "").strip()
     corporate = (os.environ.get("STRIPE_PRICE_CORPORATE") or "").strip()
+    scale = (os.environ.get("STRIPE_PRICE_SCALE") or "").strip()
     enterprise = (os.environ.get("STRIPE_PRICE_ENTERPRISE") or "").strip()
     if price_id == starter:
         return 2_000
@@ -1025,6 +1031,8 @@ def _price_id_to_cap(price_id: str) -> int | None:
         return 5_000
     if price_id == corporate:
         return 15_000
+    if scale and price_id == scale:
+        return 50_000
     if enterprise and price_id == enterprise:
         try:
             return max(1, int((os.environ.get("STRIPE_ENTERPRISE_MONTHLY_CAP") or "15000").strip()))
@@ -1040,6 +1048,7 @@ def _price_id_to_plan(price_id: str) -> str | None:
     starter = (os.environ.get("STRIPE_PRICE_STARTER") or "").strip()
     pro = (os.environ.get("STRIPE_PRICE_PRO") or "").strip()
     corporate = (os.environ.get("STRIPE_PRICE_CORPORATE") or "").strip()
+    scale = (os.environ.get("STRIPE_PRICE_SCALE") or "").strip()
     enterprise = (os.environ.get("STRIPE_PRICE_ENTERPRISE") or "").strip()
     if price_id == starter:
         return "starter"
@@ -1047,6 +1056,8 @@ def _price_id_to_plan(price_id: str) -> str | None:
         return "pro"
     if price_id == corporate:
         return "corporate"
+    if scale and price_id == scale:
+        return "scale"
     if enterprise and price_id == enterprise:
         return "corporate"
     return None
@@ -1059,6 +1070,7 @@ def _all_overage_price_ids() -> set[str]:
         "STRIPE_PRICE_OVERAGE_STARTER",
         "STRIPE_PRICE_OVERAGE_PRO",
         "STRIPE_PRICE_OVERAGE_CORPORATE",
+        "STRIPE_PRICE_OVERAGE_SCALE",
         "STRIPE_PRICE_OVERAGE_ENTERPRISE",
     ):
         v = (os.environ.get(k) or "").strip()
@@ -1095,6 +1107,8 @@ def _tier_from_label(label: str) -> tuple[int | None, str | None]:
     if not label:
         return None, None
     l = label.lower()
+    if "50000" in l.replace(",", "").replace(" ", "") or "50k" in l:
+        return 50_000, "scale"
     if "enterprise" in l or "corporate" in l:
         return 15_000, "corporate"
     if "starter" in l:
@@ -1153,7 +1167,12 @@ def _plan_from_stripe_price(price) -> tuple[int | None, str | None]:
     if isinstance(price, dict) and ua is None:
         ua = price.get("unit_amount")
     if curr == "gbp" and ua:
-        gbp_tier = {6_500: (2_000, "starter"), 12_000: (5_000, "pro"), 28_000: (15_000, "corporate")}
+        gbp_tier = {
+            6_500: (2_000, "starter"),
+            12_000: (5_000, "pro"),
+            28_000: (15_000, "corporate"),
+            50_000: (50_000, "scale"),
+        }
         if ua in gbp_tier:
             return gbp_tier[ua]
     return None, None
@@ -1168,9 +1187,12 @@ def _overage_price_id_for_plan_slug(plan_slug: str | None) -> str | None:
         "starter": "STRIPE_PRICE_OVERAGE_STARTER",
         "pro": "STRIPE_PRICE_OVERAGE_PRO",
         "corporate": "STRIPE_PRICE_OVERAGE_CORPORATE",
+        "scale": "STRIPE_PRICE_OVERAGE_SCALE",
         "enterprise": "STRIPE_PRICE_OVERAGE_ENTERPRISE",
     }.get(slug)
     if slug == "enterprise" and not (os.environ.get("STRIPE_PRICE_OVERAGE_ENTERPRISE") or "").strip():
+        key = "STRIPE_PRICE_OVERAGE_CORPORATE"
+    if slug == "scale" and not (os.environ.get("STRIPE_PRICE_OVERAGE_SCALE") or "").strip():
         key = "STRIPE_PRICE_OVERAGE_CORPORATE"
     if not key:
         return None
@@ -1236,6 +1258,42 @@ def _report_stripe_metered_overage(org_id: str, overage_price_id: str, quantity:
         print(f"[Stripe overage] Failed org_id={org_id}: {e}")
 
 
+def _subscription_period_unix(sub: Any) -> tuple[int, int] | None:
+    """Stripe subscription current_period_start/end (unix seconds)."""
+    start = getattr(sub, "current_period_start", None)
+    if start is None and isinstance(sub, dict):
+        start = sub.get("current_period_start")
+    end = getattr(sub, "current_period_end", None)
+    if end is None and isinstance(sub, dict):
+        end = sub.get("current_period_end")
+    if start is None or end is None:
+        return None
+    try:
+        s, e = int(start), int(end)
+    except (TypeError, ValueError):
+        return None
+    if e <= s:
+        return None
+    return s, e
+
+
+def _sync_sub_billing_period(org_id: str, sub: Any) -> None:
+    period = _subscription_period_unix(sub)
+    if period:
+        sync_org_billing_period(org_id, period[0], period[1])
+    else:
+        clear_org_billing_period(org_id)
+
+
+def _billing_period_api_fields(org_id: str | None) -> dict[str, int | None]:
+    if not org_id:
+        return {"billing_period_start": None, "billing_period_end": None}
+    cached = get_org_billing_period(org_id)
+    if not cached:
+        return {"billing_period_start": None, "billing_period_end": None}
+    return {"billing_period_start": cached[0], "billing_period_end": cached[1]}
+
+
 def _org_has_active_subscription(org_id: str) -> bool:
     """True if this org has an entitled Stripe subscription (active / trialing / past_due)."""
     if not _stripe_enabled():
@@ -1285,10 +1343,12 @@ def cancel_stripe_subscriptions_for_org(org_id: str) -> int:
 def _org_paid_plan_info(org_id: str) -> tuple[int | None, str | None]:
     """Return (monthly_cap, plan_slug) for this org's paid plan, or (None, None) if not on a paid plan."""
     if not _stripe_enabled():
+        clear_org_billing_period(org_id)
         return None, None
     try:
         matching = _stripe_customers_for_org_newest_first(org_id)
         if not matching:
+            clear_org_billing_period(org_id)
             return None, None
         entitled = []
         for cust in matching:
@@ -1296,12 +1356,14 @@ def _org_paid_plan_info(org_id: str) -> tuple[int | None, str | None]:
             if entitled:
                 break
         if not entitled:
+            clear_org_billing_period(org_id)
             return None, None
         sub_id = getattr(entitled[0], "id", None) or entitled[0].get("id")
         sub = stripe.Subscription.retrieve(
             sub_id,
             expand=["items.data.price.product"],
         )
+        _sync_sub_billing_period(org_id, sub)
         items = getattr(sub, "items", None) or (sub.get("items") if isinstance(sub, dict) else None)
         if not items:
             return None, None
