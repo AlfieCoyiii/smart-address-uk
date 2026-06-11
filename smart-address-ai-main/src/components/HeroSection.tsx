@@ -7,9 +7,9 @@ import { Link } from "react-router-dom";
 const HeroSection = () => {
   return (
     <section className="relative w-full min-h-screen overflow-hidden">
-      {/* Animation at 85% size — centred in viewport */}
+      {/* Animation at ~78% size — centred in viewport */}
       <div className="absolute inset-0 z-[1] flex min-h-[100dvh] items-center justify-center">
-        <div className="h-[85%] w-[85%] min-h-0">
+        <div className="h-[78%] w-[78%] min-h-0">
           <RiveAnimation hero embedded height="100%" className="h-full w-full" />
         </div>
       </div>
