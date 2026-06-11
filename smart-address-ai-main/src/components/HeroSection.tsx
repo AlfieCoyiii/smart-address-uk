@@ -7,13 +7,11 @@ import { Link } from "react-router-dom";
 const HeroSection = () => {
   return (
     <section className="relative w-full min-h-screen overflow-hidden">
-      {/* Original site background */}
-      <div className="absolute inset-0 bg-gradient-hero" />
-      <div className="absolute inset-0 grid-pattern opacity-30" />
-
-      {/* Animation fills viewport — Cover fit, no CSS scaling or dim overlays */}
-      <div className="absolute inset-0 z-[1] w-screen left-1/2 -translate-x-1/2 min-h-[100dvh]">
-        <RiveAnimation hero embedded height="100%" className="h-full w-full min-h-[100dvh]" />
+      {/* Animation at 85% size — centred in viewport */}
+      <div className="absolute inset-0 z-[1] flex min-h-[100dvh] items-center justify-center">
+        <div className="h-[85%] w-[85%] min-h-0">
+          <RiveAnimation hero embedded height="100%" className="h-full w-full" />
+        </div>
       </div>
 
       <div className="relative z-10 container mx-auto min-h-screen px-4 lg:px-8 pointer-events-none">
@@ -58,7 +56,7 @@ const HeroSection = () => {
           transition={{ delay: 0.45, duration: 0.5 }}
           className="absolute bottom-8 lg:bottom-12 left-4 lg:left-8 pointer-events-auto"
         >
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-accent" />
               Up to 10,000 per request

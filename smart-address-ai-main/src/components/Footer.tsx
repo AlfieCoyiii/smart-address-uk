@@ -1,9 +1,19 @@
 import Logo from "@/components/Logo";
 import { Link } from "react-router-dom";
+import { cn } from "@/lib/utils";
 
-const Footer = () => {
+type FooterProps = {
+  variant?: "default" | "home";
+};
+
+const Footer = ({ variant = "default" }: FooterProps) => {
   return (
-    <footer className="border-t border-border/50 bg-card/50">
+    <footer
+      className={cn(
+        "border-t border-border/50",
+        variant === "home" ? "bg-transparent" : "bg-card/50",
+      )}
+    >
       <div className="container mx-auto px-4 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           <div className="md:col-span-1">
