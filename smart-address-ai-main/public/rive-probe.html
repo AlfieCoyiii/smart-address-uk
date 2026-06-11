@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Rive probe</title>
+    <style>
+      body { font-family: system-ui; margin: 2rem; background: #111; color: #eee; }
+      canvas { width: 400px; height: 300px; border: 1px solid #444; display: block; }
+      pre { margin-top: 1rem; font-size: 12px; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas" width="800" height="600"></canvas>
+    <pre id="log"></pre>
+    <script src="https://unpkg.com/@rive-app/canvas@2.38.0/rive.js"></script>
+    <script>
+      const logEl = document.getElementById("log");
+      const lines = [];
+      function log(msg) {
+        lines.push(msg);
+        logEl.textContent = lines.join("\n");
+      }
+
+      const canvas = document.getElementById("canvas");
+      const src = "/animations/smartaddress-approved.riv";
+
+      const r = new rive.Rive({
+        src,
+        canvas,
+        autoplay: true,
+        onLoad: () => {
+          log("onLoad OK");
+          log("artboardNames: " + JSON.stringify(r.artboardNames));
+          log("activeArtboard: " + r.activeArtboard);
+          log("stateMachineNames: " + JSON.stringify(r.stateMachineNames));
+          log("animationNames: " + JSON.stringify(r.animationNames));
+
+          const sm = r.stateMachineNames?.[0];
+          const anim = r.animationNames?.[0];
+          if (sm) {
+            r.play(sm, true);
+            log("playing state machine: " + sm);
+          } else if (anim) {
+            r.play(anim);
+            log("playing animation: " + anim);
+          } else {
+            log("nothing to play");
+          }
+        },
+        onLoadError: (err) => {
+          log("onLoadError: " + (err?.data || JSON.stringify(err)));
+        },
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Rive artboard test</title>
+    <style>
+      body { font-family: system-ui; margin: 1rem; background: #1a1f2e; color: #eee; }
+      #wrap { width: 900px; height: 500px; border: 2px solid #3b82f6; background: #2a3142; }
+      canvas { width: 100%; height: 100%; display: block; }
+      pre { font-size: 12px; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <p>Artboard: <strong id="name"></strong></p>
+    <div id="wrap"><canvas id="canvas"></canvas></div>
+    <pre id="log"></pre>
+    <script src="https://unpkg.com/@rive-app/canvas@2.38.0/rive.js"></script>
+    <script>
+      const params = new URLSearchParams(location.search);
+      const artboard = params.get("artboard") || "Animation";
+      document.getElementById("name").textContent = artboard;
+      const logEl = document.getElementById("log");
+      const canvas = document.getElementById("canvas");
+      const r = new rive.Rive({
+        src: "/animations/smartaddress-approved.riv",
+        canvas,
+        artboard,
+        stateMachines: "State Machine 1",
+        autoplay: true,
+        onLoad: () => {
+          r.resizeDrawingSurfaceToCanvas();
+          logEl.textContent = [
+            "onLoad OK",
+            "active: " + r.activeArtboard,
+            "anims: " + JSON.stringify(r.animationNames),
+            "playing: " + r.isPlaying,
+          ].join("\n");
+        },
+        onLoadError: (err) => {
+          logEl.textContent = "error: " + (err?.data || JSON.stringify(err));
+        },
+      });
+    </script>
+  </body>
+</html>

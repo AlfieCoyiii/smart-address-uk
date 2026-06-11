@@ -16,6 +16,7 @@ import Team from "./pages/Team";
 import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import NotFound from "./pages/NotFound";
+import RivePreview from "./pages/RivePreview";
 import { InvitationTicketRedirect } from "@/components/InvitationTicketRedirect";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
         {/* Host misconfig: some setups Redirect (not Rewrite) to /index.html — fix URL for the router */}
         <Route path="/index.html" element={<Navigate to="/" replace />} />
         <Route path="/" element={<Index />} />
+        <Route path="/rive-preview" element={<RivePreview />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/sign-in/sso-callback" element={<AuthenticateWithRedirectCallback />} />
         <Route path="/sign-up/sso-callback" element={<AuthenticateWithRedirectCallback />} />
