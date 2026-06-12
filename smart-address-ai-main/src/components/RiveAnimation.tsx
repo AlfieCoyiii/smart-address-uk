@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useRive, Layout, Fit, Alignment } from "@rive-app/react-canvas";
 import type { Rive as RiveInstance } from "@rive-app/canvas";
 import { cn } from "@/lib/utils";
@@ -47,16 +47,22 @@ export function RiveAnimation({
   const useCropTransform = !hero && (scale !== 1 || offsetY !== 0);
   const resolvedFit = fit ?? (hero ? Fit.Cover : Fit.Contain);
 
+  const layout = useMemo(
+    () =>
+      new Layout({
+        fit: resolvedFit,
+        alignment: Alignment.Center,
+      }),
+    [resolvedFit],
+  );
+
   const { RiveComponent, rive } = useRive(
     {
       src: RIVE_ANIMATION_SRC,
       artboard: RIVE_ARTBOARD,
       stateMachines: RIVE_STATE_MACHINE,
       autoplay: true,
-      layout: new Layout({
-        fit: resolvedFit,
-        alignment: Alignment.Center,
-      }),
+      layout,
       onRiveReady: (instance) => {
         if (hero) {
           applyHeroSharpness(instance);
@@ -72,6 +78,18 @@ export function RiveAnimation({
       useOffscreenRenderer: true,
     },
   );
+
+  // Re-apply layout when fit changes (e.g. mobile Contain vs desktop Cover).
+  useEffect(() => {
+    if (!rive) return;
+    rive.layout = layout;
+    if (hero) {
+      applyHeroSharpness(rive);
+    } else {
+      rive.resizeDrawingSurfaceToCanvas();
+      rive.resizeToCanvas();
+    }
+  }, [rive, layout, hero]);
 
   // React hook sizes canvas at 1× on standard monitors — re-sharpen after each resize.
   useEffect(() => {

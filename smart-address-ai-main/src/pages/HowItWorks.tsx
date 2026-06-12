@@ -1,7 +1,7 @@
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { motion } from "framer-motion";
-import { Split, Cpu, Table, Download, Info } from "lucide-react";
+import { Split, Table, Download } from "lucide-react";
 
 const HowItWorks = () => {
   return (
@@ -17,7 +17,8 @@ const HowItWorks = () => {
               How it <span className="text-gradient-primary">works</span>
             </h1>
             <p className="mt-4 text-lg text-muted-foreground text-center max-w-lg mx-auto">
-              You send UK address lines. We return them split into structured columns — flat, building, street number, street name, town, postcode. No validation, no lookups: we structure the text you send so it’s ready for your systems.
+              You send UK address lines. We return them split into structured columns — flat, building, street number,
+              street name, town, postcode — ready for your CRM, spreadsheets, and migrations.
             </p>
 
             <div className="mt-12 space-y-8">
@@ -25,22 +26,20 @@ const HowItWorks = () => {
                 {
                   icon: Split,
                   title: "Send your data",
-                  description: "Upload or paste UK address lines — one per line, up to 10,000 per request. Messy formatting, extra text, and odd punctuation are fine. We use pattern recognition to extract the parts that matter.",
-                },
-                {
-                  icon: Cpu,
-                  title: "We structure it",
-                  description: "Each line is parsed into consistent columns. We don’t validate against any database or correct spelling; we only split and structure. That means we can handle descriptions and non-standard lines that validators often reject.",
+                  description:
+                    "Upload or paste UK address lines — one per line, up to 10,000 per request. Messy formatting, extra text, and odd punctuation are fine. We use pattern recognition to extract the parts that matter.",
                 },
                 {
                   icon: Table,
                   title: "Review and export",
-                  description: "Results come back in a table. Toggle columns, copy to clipboard, or download as CSV. Drop the output straight into your CRM, spreadsheet, or migration pipeline.",
+                  description:
+                    "Results come back in a table. Toggle columns, copy to clipboard, or download as CSV. Drop the output straight into your CRM, spreadsheet, or migration pipeline.",
                 },
                 {
                   icon: Download,
                   title: "Use it downstream",
-                  description: "Structured data is ready for mail merge, reporting, compliance, or any process that needs clean address fields. Try the demo above to see your own addresses split.",
+                  description:
+                    "Structured data is ready for mail merge, reporting, compliance, or any process that needs clean address fields. Try the demo above to see your own addresses split.",
                 },
               ].map((step, i) => (
                 <motion.div
@@ -59,18 +58,6 @@ const HowItWorks = () => {
                   </div>
                 </motion.div>
               ))}
-            </div>
-
-            <div className="mt-14 rounded-xl border border-border/50 bg-card/30 p-5 flex gap-3">
-              <Info className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-              <div className="text-sm text-muted-foreground space-y-2">
-                <p className="text-foreground/90 font-medium">Details that matter</p>
-                <ul className="list-disc list-inside space-y-1">
-                  <li><strong className="text-foreground">Incomplete lines.</strong> By default we split addresses even without a postcode or town. Use parser settings to require a valid UK postcode and refund credits for lines we cannot split that way.</li>
-                  <li><strong className="text-foreground">You’re only charged for what we split.</strong> If we can’t structure an address, no token is used.</li>
-                  <li><strong className="text-foreground">150 characters per line.</strong> Each address line can be up to 150 characters.</li>
-                </ul>
-              </div>
             </div>
           </motion.div>
         </div>
