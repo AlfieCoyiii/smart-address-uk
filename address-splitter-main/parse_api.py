@@ -66,6 +66,7 @@ from clerk_org import (
     maybe_rename_new_organization_from_creator,
 )
 from clerk_webhooks import verify_clerk_webhook_payload
+from activity_notify import notify_activity
 
 # Stripe (optional; set STRIPE_SECRET_KEY to enable billing)
 try:
@@ -553,6 +554,7 @@ def parse_addresses(body: ParseRequest, request: Request):
                 allow_without_postcode=allow_without_postcode,
                 allow_without_town=allow_without_town,
             )
+            _notify_parse_used(request, None, None, len(addresses), len(results))
             return ParseResponse(
                 results=[ParsedAddressResponse(**r) for r in results],
                 unsplit=[UnsplitEntry(**u) for u in unsplit],
@@ -598,6 +600,7 @@ def parse_addresses(body: ParseRequest, request: Request):
                     raise HTTPException(status_code=402, detail=err)
                 if ovg > 0 and overage_pid:
                     _report_stripe_metered_overage(org_id, overage_pid, ovg)
+            _notify_parse_used(request, user_id, org_id, len(addresses), len(results))
             return ParseResponse(
                 results=[ParsedAddressResponse(**r) for r in results],
                 unsplit=[UnsplitEntry(**u) for u in unsplit],
@@ -617,6 +620,7 @@ def parse_addresses(body: ParseRequest, request: Request):
             err = consume_tokens(org_id, user_id, billable_count)
             if err:
                 raise HTTPException(status_code=402, detail=err)
+        _notify_parse_used(request, user_id, org_id, len(addresses), len(results))
         return ParseResponse(
             results=[ParsedAddressResponse(**r) for r in results],
             unsplit=[UnsplitEntry(**u) for u in unsplit],
@@ -672,6 +676,48 @@ def parse_context(request: Request):
         "tokens_limit": tokens_limit,
         "would_enforce_cap": has_sub and plan_cap is not None,
     }
+
+
+def _notify_parse_used(
+    request: Request,
+    user_id: str | None,
+    org_id: str | None,
+    n_in: int,
+    n_out: int,
+) -> None:
+    extra_parts = [f"{n_in} line(s), {n_out} result(s)"]
+    if org_id:
+        _, slug = _org_paid_plan_info(org_id)
+        if slug:
+            extra_parts.append(f"plan={slug}")
+    notify_activity(
+        "parse_success",
+        ip=_client_ip(request),
+        path="/parse",
+        signed_in=bool(user_id),
+        extra=", ".join(extra_parts),
+    )
+
+
+class ActivityBody(BaseModel):
+    event: str
+    path: str | None = None
+    extra: str | None = None
+
+
+@app.post("/activity")
+def record_activity(body: ActivityBody, request: Request):
+    """Lightweight page-activity beacon from the marketing site (optional Slack/Discord webhook)."""
+    auth_header = request.headers.get("authorization") or ""
+    user_id = verify_clerk_token(auth_header) if auth_header else None
+    notify_activity(
+        body.event,
+        ip=_client_ip(request),
+        path=(body.path or "").strip(),
+        signed_in=bool(user_id),
+        extra=(body.extra or "").strip(),
+    )
+    return {"ok": True}
 
 
 @app.get("/usage")

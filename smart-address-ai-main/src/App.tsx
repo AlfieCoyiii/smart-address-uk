@@ -18,6 +18,7 @@ import PrivacyPolicy from "./pages/PrivacyPolicy";
 import NotFound from "./pages/NotFound";
 import RivePreview from "./pages/RivePreview";
 import { InvitationTicketRedirect } from "@/components/InvitationTicketRedirect";
+import { RouteAnalytics } from "@/components/RouteAnalytics";
 
 const queryClient = new QueryClient();
 
@@ -25,6 +26,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <InvitationTicketRedirect />
+      <RouteAnalytics />
       <Toaster />
       <Sonner />
       <Routes>

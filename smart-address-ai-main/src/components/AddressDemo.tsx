@@ -23,6 +23,7 @@ import { LayoutModeSwitch } from "@/components/LayoutModeSwitch";
 import { ParseSettingsMenu } from "@/components/ParseSettingsMenu";
 import { OutputColumnsHeaderRow } from "@/components/EditableOutputColumns";
 import { requestUsageRefresh } from "@/lib/usageEvents";
+import { trackParseSuccess } from "@/lib/analytics";
 import { loadRequireValidPostcode, saveRequireValidPostcode } from "@/lib/parseSettings";
 import { Button } from "@/components/ui/button";
 import {
@@ -112,6 +113,12 @@ const AddressDemo = () => {
       setInputLineByResultIndex(lineMap);
       setResults(apiResults.map((row, idx) => enrichParsedAddress(row, lineMap[idx])));
       setUnsplit(apiUnsplit);
+      trackParseSuccess({
+        lineCount: addressesToSend.length,
+        resultCount: apiResults.length,
+        signedIn: Boolean(isSignedIn),
+        token: token ?? undefined,
+      });
       if (isSignedIn && organization?.id) {
         requestUsageRefresh();
       }
